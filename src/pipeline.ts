@@ -55,7 +55,10 @@ interface ProcessResult {
   skipped?: boolean;
 }
 
-const extractionFieldValidators: Record<ExtractionFieldType, z.ZodType<unknown>> = {
+const extractionFieldValidators: Record<
+  ExtractionFieldType,
+  z.ZodType<unknown>
+> = {
   string: z.string(),
   number: z.number(),
   boolean: z.boolean(),
@@ -101,7 +104,7 @@ function hasMeaningfulValue(value: unknown): boolean {
 
 export function shouldSkipRecord(
   record: PipelineRecord,
-  skipFields: string[]
+  skipFields: string[],
 ): boolean {
   if (skipFields.length === 0) {
     return false;
@@ -110,7 +113,11 @@ export function shouldSkipRecord(
   return skipFields.every((field) => hasMeaningfulValue(record[field]));
 }
 
-function logMessage(message: string, verbosity: number, minLevel: number): void {
+function logMessage(
+  message: string,
+  verbosity: number,
+  minLevel: number,
+): void {
   if (verbosity >= minLevel) {
     stderr.write(`${message}\n`);
   }
@@ -120,7 +127,7 @@ function logProgress(
   current: number,
   total: number,
   recordId: string,
-  verbosity: number
+  verbosity: number,
 ): void {
   if (verbosity >= 1) {
     const prefix = picocolors.dim(`[${current}/${total}]`);
@@ -129,7 +136,11 @@ function logProgress(
   }
 }
 
-function logRecordError(recordId: string, error: Error, verbosity: number): void {
+function logRecordError(
+  recordId: string,
+  error: Error,
+  verbosity: number,
+): void {
   const prefix = picocolors.red("[ERROR]");
   const message = verbosity >= 2 ? error.stack || error.message : error.message;
   stderr.write(`${prefix} Record ${recordId}: ${message}\n`);
@@ -137,7 +148,7 @@ function logRecordError(recordId: string, error: Error, verbosity: number): void
 
 function createRateLimitedQueue(
   requestsPerMinute: number,
-  concurrency: number
+  concurrency: number,
 ): PQueue {
   return new PQueue({
     concurrency,
@@ -148,13 +159,13 @@ function createRateLimitedQueue(
 }
 
 function createExtractionOutputSchema(
-  extractionConfig: ExtractionConfig
+  extractionConfig: ExtractionConfig,
 ): z.ZodObject<Record<string, z.ZodType<unknown>>> {
   const shape = Object.fromEntries(
     Object.entries(extractionConfig.schema).map(([key, value]) => [
       key,
       extractionFieldValidators[value.type],
-    ])
+    ]),
   ) as Record<string, z.ZodType<unknown>>;
 
   return z.object(shape).strict();
@@ -171,15 +182,15 @@ function formatValidationError(error: z.ZodError): string {
 
 function validateExtractionOutput(
   extractionSchema: z.ZodObject<Record<string, z.ZodType<unknown>>>,
-  extracted: Record<string, unknown>
+  extracted: Record<string, unknown>,
 ): Record<string, unknown> {
   const result = extractionSchema.safeParse(extracted);
 
   if (!result.success) {
     throw new Error(
       `LLM response does not match extraction schema: ${formatValidationError(
-        result.error
-      )}`
+        result.error,
+      )}`,
     );
   }
 
@@ -214,7 +225,11 @@ function parseInputContent(content: string): PipelineRecord[] {
     for (const line of lines) {
       try {
         const parsed = JSON.parse(line);
-        if (parsed !== null && typeof parsed === "object" && !Array.isArray(parsed)) {
+        if (
+          parsed !== null &&
+          typeof parsed === "object" &&
+          !Array.isArray(parsed)
+        ) {
           records.push(parsed as PipelineRecord);
           continue;
         }
@@ -224,7 +239,7 @@ function parseInputContent(content: string): PipelineRecord[] {
         throw new Error(
           `Input is neither valid JSON nor valid JSONL: ${
             jsonError instanceof Error ? jsonError.message : String(jsonError)
-          }`
+          }`,
         );
       }
     }
@@ -235,7 +250,7 @@ function parseInputContent(content: string): PipelineRecord[] {
 
 async function readInputSource(
   inputPath: string | undefined,
-  stdinStream: Readable | undefined
+  stdinStream: Readable | undefined,
 ): Promise<InputData> {
   if (inputPath) {
     const rawContent = readFileSync(inputPath, "utf-8");
@@ -260,7 +275,7 @@ async function readInputSource(
 
 export async function loadInputData(
   inputPath?: string,
-  stdinStream?: Readable
+  stdinStream?: Readable,
 ): Promise<PipelineRecord[]> {
   const { records } = await readInputSource(inputPath, stdinStream);
   return records;
@@ -275,7 +290,9 @@ export function detectJsonlFormat(content: string): boolean {
   return lines.every((line) => {
     try {
       const parsed = JSON.parse(line);
-      return typeof parsed === "object" && parsed !== null && !Array.isArray(parsed);
+      return (
+        typeof parsed === "object" && parsed !== null && !Array.isArray(parsed)
+      );
     } catch {
       return false;
     }
@@ -285,7 +302,7 @@ export function detectJsonlFormat(content: string): boolean {
 function shouldUseJsonlOutput(
   rawContent: string,
   inputPath: string | undefined,
-  outputPath: string | undefined
+  outputPath: string | undefined,
 ): boolean {
   if (outputPath?.toLowerCase().endsWith(".jsonl")) {
     return true;
@@ -306,7 +323,7 @@ export async function saveOutputData(
   records: PipelineRecord[],
   outputPath?: string,
   stdoutStream?: Writable,
-  useJsonl = false
+  useJsonl = false,
 ): Promise<void> {
   async function writeRecords(destination: Writable): Promise<void> {
     const chunks = useJsonl
@@ -324,7 +341,7 @@ export async function saveOutputData(
   if (outputPath) {
     const tempOutputPath = join(
       dirname(outputPath),
-      `.${basename(outputPath)}.${process.pid}.${Date.now()}.tmp`
+      `.${basename(outputPath)}.${process.pid}.${Date.now()}.tmp`,
     );
     const writeStream = createWriteStream(tempOutputPath);
 
@@ -353,7 +370,7 @@ function resolveLLMConfig(config: AppLLMConfig): LLMConfig {
 
   if (!apiKey) {
     throw new Error(
-      `Missing API key. Set the ${config.apiKeyEnv} environment variable or update llm.apiKeyEnv in the config.`
+      `Missing API key. Set the ${config.apiKeyEnv} environment variable or update llm.apiKeyEnv in the config.`,
     );
   }
 
@@ -372,7 +389,7 @@ function createExtractionPrompts(
   config: Config,
   record: PipelineRecord,
   query: string,
-  searchResults: SearchResult[]
+  searchResults: SearchResult[],
 ): { systemPrompt: string; userPrompt: string } {
   const systemPrompt = [
     config.extraction.prompt.trim(),
@@ -404,16 +421,18 @@ async function processRecord(
   llmQueue: PQueue,
   options: PipelineOptions,
   index: number,
-  total: number
+  total: number,
 ): Promise<ProcessResult> {
   const recordId = formatRecordId(record, index);
 
   try {
     if (shouldSkipRecord(record, options.skipFields)) {
       logMessage(
-        picocolors.yellow(`[${index + 1}/${total}] Skipping ${recordId} (already enriched)`),
+        picocolors.yellow(
+          `[${index + 1}/${total}] Skipping ${recordId} (already enriched)`,
+        ),
         options.verbose,
-        2
+        2,
       );
       return { record, success: true, skipped: true };
     }
@@ -421,7 +440,11 @@ async function processRecord(
     logProgress(index + 1, total, recordId, options.verbose);
 
     if (options.dryRun) {
-      logMessage(picocolors.dim(`[DRY RUN] Would process ${recordId}`), options.verbose, 1);
+      logMessage(
+        picocolors.dim(`[DRY RUN] Would process ${recordId}`),
+        options.verbose,
+        1,
+      );
       return { record, success: true };
     }
 
@@ -434,11 +457,12 @@ async function processRecord(
 
     const searchResults = await searchQueue.add<SearchResult[]>(() =>
       searchFn(query, {
+        provider: config.research.provider,
         maxResults: config.research.maxResults,
         region: config.research.region,
         timeoutMs: config.research.timeoutMs,
         maxRetries: config.research.maxRetries,
-      })
+      }),
     );
     if (!searchResults) {
       throw new Error("Search queue task did not return results");
@@ -446,29 +470,29 @@ async function processRecord(
     logMessage(
       picocolors.dim(`  Found ${searchResults.length} search results`),
       options.verbose,
-      2
+      2,
     );
 
     const { systemPrompt, userPrompt } = createExtractionPrompts(
       config,
       record,
       query,
-      searchResults
+      searchResults,
     );
     const extractionResult = await llmQueue.add<Record<string, unknown>>(() =>
-      llmClient.extract(systemPrompt, userPrompt)
+      llmClient.extract(systemPrompt, userPrompt),
     );
     if (!extractionResult) {
       throw new Error("LLM queue task did not return extracted data");
     }
     const extracted = validateExtractionOutput(
       extractionSchema,
-      extractionResult
+      extractionResult,
     );
     logMessage(
       picocolors.dim(`  Extracted ${Object.keys(extracted).length} fields`),
       options.verbose,
-      2
+      2,
     );
 
     return {
@@ -494,12 +518,12 @@ export async function runPipeline(options: PipelineOptions): Promise<void> {
   logMessage(picocolors.dim("Reading input..."), options.verbose, 2);
   const { rawContent, records: inputRecords } = await readInputSource(
     options.inputPath,
-    options.stdin
+    options.stdin,
   );
   logMessage(
     picocolors.green(`Loaded ${inputRecords.length} records`),
     options.verbose,
-    1
+    1,
   );
 
   if (inputRecords.length === 0) {
@@ -507,7 +531,11 @@ export async function runPipeline(options: PipelineOptions): Promise<void> {
     return;
   }
 
-  const useJsonl = shouldUseJsonlOutput(rawContent, options.inputPath, options.outputPath);
+  const useJsonl = shouldUseJsonlOutput(
+    rawContent,
+    options.inputPath,
+    options.outputPath,
+  );
   const llmClient = options.dryRun
     ? undefined
     : (options.llmClient ?? new LLMClient(resolveLLMConfig(config.llm)));
@@ -515,31 +543,31 @@ export async function runPipeline(options: PipelineOptions): Promise<void> {
   const searchFn = options.searchFn ?? searchWeb;
   const searchQueue = createRateLimitedQueue(
     config.research.requestsPerMinute,
-    config.research.maxConcurrency
+    config.research.maxConcurrency,
   );
   const llmQueue = createRateLimitedQueue(
     config.llm.requestsPerMinute,
-    config.llm.maxConcurrency
+    config.llm.maxConcurrency,
   );
 
   logMessage(
     picocolors.dim(`Processing with ${options.workers} workers...`),
     options.verbose,
-    1
+    1,
   );
   logMessage(
     picocolors.dim(
-      `Search throttled to ${config.research.requestsPerMinute} req/min with concurrency ${config.research.maxConcurrency}`
+      `Search throttled to ${config.research.requestsPerMinute} req/min with concurrency ${config.research.maxConcurrency}`,
     ),
     options.verbose,
-    2
+    2,
   );
   logMessage(
     picocolors.dim(
-      `LLM throttled to ${config.llm.requestsPerMinute} req/min with concurrency ${config.llm.maxConcurrency}`
+      `LLM throttled to ${config.llm.requestsPerMinute} req/min with concurrency ${config.llm.maxConcurrency}`,
     ),
     options.verbose,
-    2
+    2,
   );
 
   const queue = new PQueue({ concurrency: options.workers });
@@ -561,7 +589,7 @@ export async function runPipeline(options: PipelineOptions): Promise<void> {
         llmQueue,
         options,
         index,
-        inputRecords.length
+        inputRecords.length,
       );
 
       results[index] = result;
@@ -578,20 +606,22 @@ export async function runPipeline(options: PipelineOptions): Promise<void> {
       if (options.verbose >= 1 && processed % 10 === 0) {
         stderr.write(
           picocolors.dim(
-            `  Progress: ${processed}/${inputRecords.length} (${succeeded} ok, ${failed} failed, ${skipped} skipped)\n`
-          )
+            `  Progress: ${processed}/${inputRecords.length} (${succeeded} ok, ${failed} failed, ${skipped} skipped)\n`,
+          ),
         );
       }
-    })
+    }),
   );
 
   await Promise.all(tasks);
 
   if (failed > 0) {
     logMessage(
-      picocolors.yellow("Skipping output write because one or more records failed"),
+      picocolors.yellow(
+        "Skipping output write because one or more records failed",
+      ),
       options.verbose,
-      1
+      1,
     );
     const error = new Error(`${failed} record(s) failed to process`);
     (error as Error & { exitCode: number }).exitCode = 1;
@@ -603,7 +633,7 @@ export async function runPipeline(options: PipelineOptions): Promise<void> {
     results.map((result) => result.record),
     options.outputPath,
     options.stdout,
-    useJsonl
+    useJsonl,
   );
 
   if (options.verbose >= 1) {
@@ -612,8 +642,15 @@ export async function runPipeline(options: PipelineOptions): Promise<void> {
     stderr.write(`  Total:     ${inputRecords.length}\n`);
     stderr.write(`  Succeeded: ${picocolors.green(String(succeeded))}\n`);
     stderr.write("  Failed:    0\n");
-    stderr.write(`  Skipped:   ${skipped > 0 ? picocolors.yellow(String(skipped)) : "0"}\n`);
+    stderr.write(
+      `  Skipped:   ${skipped > 0 ? picocolors.yellow(String(skipped)) : "0"}\n`,
+    );
   }
 }
 
-export type { Config, ExtractionConfig, LLMConfig as RuntimeLLMConfig, ResearchConfig };
+export type {
+  Config,
+  ExtractionConfig,
+  LLMConfig as RuntimeLLMConfig,
+  ResearchConfig,
+};

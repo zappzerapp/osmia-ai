@@ -1,4 +1,10 @@
-import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import {
+  existsSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Readable, Writable } from "node:stream";
@@ -30,7 +36,8 @@ function createTempDir(): string {
 
 function silenceStderr(): () => void {
   const originalWrite = process.stderr.write;
-  process.stderr.write = ((..._args: Parameters<typeof process.stderr.write>) => true) as typeof process.stderr.write;
+  process.stderr.write = ((..._args: Parameters<typeof process.stderr.write>) =>
+    true) as typeof process.stderr.write;
 
   return () => {
     process.stderr.write = originalWrite;
@@ -45,8 +52,8 @@ describe("pipeline helpers", () => {
           alter: "3+",
           beschreibung: "Kurzbeschreibung",
         },
-        ["alter", "beschreibung"]
-      )
+        ["alter", "beschreibung"],
+      ),
     ).toBe(true);
 
     expect(
@@ -54,8 +61,8 @@ describe("pipeline helpers", () => {
         {
           alter: [],
         },
-        ["alter"]
-      )
+        ["alter"],
+      ),
     ).toBe(false);
 
     expect(
@@ -63,8 +70,8 @@ describe("pipeline helpers", () => {
         {
           alter: {},
         },
-        ["alter"]
-      )
+        ["alter"],
+      ),
     ).toBe(false);
   });
 
@@ -73,13 +80,17 @@ describe("pipeline helpers", () => {
     const jsonPath = join(tempDir, "input.json");
     const jsonlPath = join(tempDir, "input.jsonl");
 
-    writeFileSync(jsonPath, JSON.stringify([{ id: "1" }, { id: "2" }]), "utf-8");
+    writeFileSync(
+      jsonPath,
+      JSON.stringify([{ id: "1" }, { id: "2" }]),
+      "utf-8",
+    );
     writeFileSync(jsonlPath, '{"id":"1"}\n{"id":"2"}\n', "utf-8");
 
     await expect(loadInputData(jsonPath)).resolves.toHaveLength(2);
     await expect(loadInputData(jsonlPath)).resolves.toHaveLength(2);
     await expect(
-      loadInputData(undefined, Readable.from(['{"id":"1"}\n{"id":"2"}\n']))
+      loadInputData(undefined, Readable.from(['{"id":"1"}\n{"id":"2"}\n'])),
     ).resolves.toHaveLength(2);
   });
 
@@ -121,7 +132,7 @@ extraction:
     beschreibung:
       type: string
 `,
-      "utf-8"
+      "utf-8",
     );
 
     const stdout = new Writable({
@@ -137,11 +148,15 @@ extraction:
       workers: 1,
       dryRun: true,
       verbose: 0,
-      stdin: Readable.from(['{"id":"1","titel":"Eins"}\n{"id":"2","titel":"Zwei"}\n']),
+      stdin: Readable.from([
+        '{"id":"1","titel":"Eins"}\n{"id":"2","titel":"Zwei"}\n',
+      ]),
       stdout,
     });
 
-    expect(chunks.join("")).toBe('{"id":"1","titel":"Eins"}\n{"id":"2","titel":"Zwei"}\n');
+    expect(chunks.join("")).toBe(
+      '{"id":"1","titel":"Eins"}\n{"id":"2","titel":"Zwei"}\n',
+    );
   });
 
   it("rejects extracted data that violates the configured schema without writing output", async () => {
@@ -167,7 +182,7 @@ extraction:
     beschreibung:
       type: string
 `,
-        "utf-8"
+        "utf-8",
       );
 
       const stdout = new Writable({
@@ -190,10 +205,64 @@ extraction:
           llmClient: {
             extract: async () => ({ beschreibung: 123 }),
           },
-        })
+        }),
       ).rejects.toThrow("1 record(s) failed to process");
 
       expect(chunks).toEqual([]);
+    } finally {
+      restoreStderr();
+    }
+  });
+
+  it("passes the configured search provider to searchFn", async () => {
+    const restoreStderr = silenceStderr();
+    try {
+      const tempDir = createTempDir();
+      const configPath = join(tempDir, "config.yaml");
+      let capturedProvider: string | undefined;
+
+      writeFileSync(
+        configPath,
+        `
+llm:
+  model: kimi-k2.5
+  apiUrl: https://ollama.com/api/chat
+
+research:
+  provider: duckduckgo
+  searchQuery: "{titel} details"
+
+extraction:
+  prompt: Extract fields
+  schema:
+    beschreibung:
+      type: string
+`,
+        "utf-8",
+      );
+
+      await runPipeline({
+        config: configPath,
+        skipFields: [],
+        workers: 1,
+        dryRun: false,
+        verbose: 0,
+        stdin: Readable.from(['{"id":"1","titel":"Eins"}\n']),
+        stdout: new Writable({
+          write(_chunk, _encoding, callback) {
+            callback();
+          },
+        }),
+        searchFn: async (_query, options) => {
+          capturedProvider = options.provider;
+          return [];
+        },
+        llmClient: {
+          extract: async () => ({ beschreibung: "Kurzbeschreibung" }),
+        },
+      });
+
+      expect(capturedProvider).toBe("duckduckgo");
     } finally {
       restoreStderr();
     }
@@ -223,7 +292,7 @@ extraction:
     beschreibung:
       type: string
 `,
-        "utf-8"
+        "utf-8",
       );
 
       await expect(
@@ -234,7 +303,9 @@ extraction:
           workers: 1,
           dryRun: false,
           verbose: 0,
-          stdin: Readable.from(['{"id":"1","titel":"Eins"}\n{"id":"2","titel":"Zwei"}\n']),
+          stdin: Readable.from([
+            '{"id":"1","titel":"Eins"}\n{"id":"2","titel":"Zwei"}\n',
+          ]),
           searchFn: async () => [],
           llmClient: {
             extract: async () => {
@@ -244,7 +315,7 @@ extraction:
                 : { beschreibung: 123 };
             },
           },
-        })
+        }),
       ).rejects.toThrow("1 record(s) failed to process");
 
       expect(existsSync(outputPath)).toBe(false);
