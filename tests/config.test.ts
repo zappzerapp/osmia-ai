@@ -1,4 +1,4 @@
-import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { mkdtempSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
@@ -180,5 +180,18 @@ extraction:
     );
 
     expect(loadConfig(configPath)).toEqual(createDefaultConfig());
+  });
+
+  it("loads every checked-in example config", () => {
+    const examplesDir = resolve(process.cwd(), "examples");
+    const exampleConfigs = readdirSync(examplesDir)
+      .filter((fileName) => fileName.endsWith(".yaml"))
+      .sort();
+
+    expect(exampleConfigs.length).toBeGreaterThan(0);
+
+    for (const fileName of exampleConfigs) {
+      expect(() => loadConfig(join(examplesDir, fileName))).not.toThrow();
+    }
   });
 });

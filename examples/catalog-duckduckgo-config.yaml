@@ -1,5 +1,5 @@
-# Catalog enrichment example (Exa search).
-# Required env: OLLAMA_API_KEY, EXA_API_KEY
+# Catalog enrichment example (DuckDuckGo search — no search API key required).
+# Required env: OLLAMA_API_KEY
 
 llm:
   model: "kimi-k2.5"
@@ -10,7 +10,7 @@ llm:
   maxConcurrency: 1
 
 research:
-  provider: "exa"
+  provider: "duckduckgo"
   searchQuery: "Product {name} {sku} specifications overview"
   maxResults: 5
   region: "de-de"

@@ -1,12 +1,17 @@
+# Catalog enrichment with conservative rate limits for large batches (Exa search).
+# Required env: OLLAMA_API_KEY, EXA_API_KEY
+
 llm:
   model: "kimi-k2.5"
   apiUrl: "https://ollama.com/api/chat"
+  apiKeyEnv: "OLLAMA_API_KEY"
   timeout: 120000
   maxRetries: 5
   requestsPerMinute: 10
   maxConcurrency: 1
 
 research:
+  provider: "exa"
   searchQuery: "Product {name} {sku} specifications overview"
   maxResults: 5
   region: "de-de"

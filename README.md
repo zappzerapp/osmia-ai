@@ -41,15 +41,49 @@ npx osmia-ai --config config.yaml --input data.json --output enriched.json
    YAML config for you.
    Run it in an interactive terminal, not via a pipe or CI stdin.
 
-2. **Set API key**:
+2. **Set API keys** (depends on your search provider — default is Exa):
    ```bash
    export OLLAMA_API_KEY="your-ollama-cloud-api-key"
+   export EXA_API_KEY="your-exa-api-key"
    ```
 
 3. **Run**:
    ```bash
    osmia-ai --config config.yaml --input data.json --output enriched.json
    ```
+
+### Try the bundled examples
+
+Sample data and ready-made configs live in [examples/](examples/):
+
+| File | Purpose |
+| --- | --- |
+| [catalog-config.yaml](examples/catalog-config.yaml) | Standard catalog enrichment (Exa search) |
+| [catalog-batch-config.yaml](examples/catalog-batch-config.yaml) | Same schema, conservative rate limits for large batches |
+| [catalog-duckduckgo-config.yaml](examples/catalog-duckduckgo-config.yaml) | Same schema, no search API key required |
+| [sample-input.json](examples/sample-input.json) | Two sample products (JSON array) |
+| [sample-input.jsonl](examples/sample-input.jsonl) | Same records as JSONL |
+
+```bash
+export OLLAMA_API_KEY="your-ollama-cloud-api-key"
+export EXA_API_KEY="your-exa-api-key"
+
+osmia-ai \
+  --config examples/catalog-config.yaml \
+  --input examples/sample-input.json \
+  --output enriched.json
+```
+
+For a quick local try without an Exa key, use the DuckDuckGo example instead:
+
+```bash
+export OLLAMA_API_KEY="your-ollama-cloud-api-key"
+
+osmia-ai \
+  --config examples/catalog-duckduckgo-config.yaml \
+  --input examples/sample-input.json \
+  --output enriched.json
+```
 
 ## Usage
 
@@ -117,9 +151,22 @@ osmia-ai --config config.yaml --input data.json --dry-run -vv
 
 **Templating**: Use `{fieldName}` placeholders in `searchQuery`—they're replaced from input records.
 
-Use [config.yaml.template](config.yaml.template) for the canonical default structure,
-and [examples/catalog-config.yaml](examples/catalog-config.yaml) as a richer catalog-focused example. `osmia-ai init` is
-the fastest way to generate a valid starting point.
+Use [config.yaml.template](config.yaml.template) for the canonical default structure.
+The [examples/](examples/) directory adds catalog-focused configs and sample input data.
+`osmia-ai init` is the fastest way to generate a valid starting point interactively.
+
+### Search providers
+
+Set `research.provider` in your YAML config. Supported values: `exa` (default), `duckduckgo`, `google`, `ollama`.
+
+| Provider | Required environment variables |
+| --- | --- |
+| `exa` | `EXA_API_KEY` |
+| `duckduckgo` | none |
+| `google` | `GOOGLE_API_KEY`, `GOOGLE_SEARCH_ENGINE_ID` |
+| `ollama` | `OLLAMA_API_KEY` |
+
+The LLM always uses the key named by `llm.apiKeyEnv` (default: `OLLAMA_API_KEY`).
 
 ## Use Cases
 
