@@ -22,7 +22,7 @@ export class SearchError extends Error {
     public readonly cause?: unknown,
     public readonly statusCode?: number,
     public readonly retryAfterMs?: number,
-    public readonly retryable = true
+    public readonly retryable = true,
   ) {
     super(message);
     this.name = "SearchError";
@@ -32,7 +32,9 @@ export class SearchError extends Error {
 /** Max characters per search result snippet injected into the LLM prompt. */
 export const DEFAULT_MAX_SNIPPET_CHARS = 4000;
 
-const DEFAULT_OPTIONS: Required<Omit<SearchOptions, "provider">> & { provider: SearchProvider } = {
+const DEFAULT_OPTIONS: Required<Omit<SearchOptions, "provider">> & {
+  provider: SearchProvider;
+} = {
   provider: "exa",
   maxResults: 5,
   region: "de-de",
@@ -51,7 +53,7 @@ export function limitSnippet(text: string, maxChars: number): string {
 
 function normalizeSearchResults(
   results: SearchResult[],
-  maxSnippetChars: number
+  maxSnippetChars: number,
 ): SearchResult[] {
   return results.map((result) => ({
     ...result,
@@ -73,28 +75,44 @@ function isSearchRateLimitMessage(message: string): boolean {
 }
 
 function isRetryableSearchStatus(statusCode: number): boolean {
-  return statusCode === 408 || statusCode === 425 || statusCode === 429 || statusCode >= 500;
+  return (
+    statusCode === 408 ||
+    statusCode === 425 ||
+    statusCode === 429 ||
+    statusCode >= 500
+  );
 }
 
-function getSearchRetryDelay(error: SearchError, attemptNumber: number): number {
+function getSearchRetryDelay(
+  error: SearchError,
+  attemptNumber: number,
+): number {
   if (error.retryAfterMs !== undefined) {
     return error.retryAfterMs;
   }
 
-  return Math.min(30_000, 1000 * (2 ** (attemptNumber - 1)));
+  return Math.min(30_000, 1000 * 2 ** (attemptNumber - 1));
 }
 
 function createTimeout(ms: number): Promise<never> {
   return new Promise((_, reject) => {
     setTimeout(() => {
-      reject(new SearchError(`Search timed out after ${ms}ms`, undefined, undefined, undefined, true));
+      reject(
+        new SearchError(
+          `Search timed out after ${ms}ms`,
+          undefined,
+          undefined,
+          undefined,
+          true,
+        ),
+      );
     }, ms);
   });
 }
 
 export function formatQuery(
   template: string,
-  record: Record<string, unknown>
+  record: Record<string, unknown>,
 ): string {
   if (!template.trim()) {
     throw new SearchError("Template cannot be empty");
@@ -122,15 +140,20 @@ export function formatSearchResults(results: SearchResult[]): string {
   return results
     .map(
       (result, index) =>
-        `[${index + 1}] ${result.title}\n${result.url}\n${result.snippet}`
+        `[${index + 1}] ${result.title}\n${result.url}\n${result.snippet}`,
     )
     .join("\n\n");
 }
 
-interface SearchProviderOptions extends Required<Omit<SearchOptions, "provider">> {}
+interface SearchProviderOptions extends Required<
+  Omit<SearchOptions, "provider">
+> {}
 
 interface SearchProviderImpl {
-  search(query: string, options: SearchProviderOptions): Promise<SearchResult[]>;
+  search(
+    query: string,
+    options: SearchProviderOptions,
+  ): Promise<SearchResult[]>;
 }
 
 function getExaApiKey(): string {
@@ -141,7 +164,7 @@ function getExaApiKey(): string {
       undefined,
       undefined,
       undefined,
-      false
+      false,
     );
   }
   return apiKey;
@@ -155,7 +178,7 @@ function getGoogleApiKey(): string {
       undefined,
       undefined,
       undefined,
-      false
+      false,
     );
   }
   return apiKey;
@@ -169,7 +192,7 @@ function getGoogleSearchEngineId(): string {
       undefined,
       undefined,
       undefined,
-      false
+      false,
     );
   }
   return cx;
@@ -183,14 +206,17 @@ function getOllamaApiKey(): string {
       undefined,
       undefined,
       undefined,
-      false
+      false,
     );
   }
   return apiKey;
 }
 
 const exaProvider: SearchProviderImpl = {
-  async search(query: string, options: Required<Omit<SearchOptions, "provider">>): Promise<SearchResult[]> {
+  async search(
+    query: string,
+    options: Required<Omit<SearchOptions, "provider">>,
+  ): Promise<SearchResult[]> {
     const apiKey = getExaApiKey();
     // eslint-disable-next-line @typescript-eslint/no-require-imports
     const Exa = require("exa-js").default;
@@ -226,7 +252,10 @@ const exaProvider: SearchProviderImpl = {
 };
 
 const duckduckgoProvider: SearchProviderImpl = {
-  async search(query: string, options: Required<Omit<SearchOptions, "provider">>): Promise<SearchResult[]> {
+  async search(
+    query: string,
+    options: Required<Omit<SearchOptions, "provider">>,
+  ): Promise<SearchResult[]> {
     // eslint-disable-next-line @typescript-eslint/no-require-imports
     const { DDGS } = require("@phukon/duckduckgo-search");
 
@@ -253,7 +282,10 @@ const duckduckgoProvider: SearchProviderImpl = {
 };
 
 const googleProvider: SearchProviderImpl = {
-  async search(query: string, options: Required<Omit<SearchOptions, "provider">>): Promise<SearchResult[]> {
+  async search(
+    query: string,
+    options: Required<Omit<SearchOptions, "provider">>,
+  ): Promise<SearchResult[]> {
     const apiKey = getGoogleApiKey();
     const cx = getGoogleSearchEngineId();
 
@@ -264,7 +296,9 @@ const googleProvider: SearchProviderImpl = {
       num: String(options.maxResults),
     });
 
-    const searchPromise = fetch(`https://www.googleapis.com/customsearch/v1?${params}`);
+    const searchPromise = fetch(
+      `https://www.googleapis.com/customsearch/v1?${params}`,
+    );
 
     interface GoogleResult {
       title?: string;
@@ -289,7 +323,7 @@ const googleProvider: SearchProviderImpl = {
         undefined,
         response.status,
         undefined,
-        isRetryableSearchStatus(response.status)
+        isRetryableSearchStatus(response.status),
       );
     }
 
@@ -301,7 +335,7 @@ const googleProvider: SearchProviderImpl = {
         data.error,
         data.error.code,
         undefined,
-        false
+        false,
       );
     }
 
@@ -314,13 +348,16 @@ const googleProvider: SearchProviderImpl = {
 };
 
 const ollamaProvider: SearchProviderImpl = {
-  async search(query: string, options: Required<Omit<SearchOptions, "provider">>): Promise<SearchResult[]> {
+  async search(
+    query: string,
+    options: Required<Omit<SearchOptions, "provider">>,
+  ): Promise<SearchResult[]> {
     const apiKey = getOllamaApiKey();
 
     const searchPromise = fetch("https://ollama.com/api/web_search", {
       method: "POST",
       headers: {
-        "Authorization": `Bearer ${apiKey}`,
+        Authorization: `Bearer ${apiKey}`,
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
@@ -351,7 +388,7 @@ const ollamaProvider: SearchProviderImpl = {
         undefined,
         response.status,
         undefined,
-        isRetryableSearchStatus(response.status)
+        isRetryableSearchStatus(response.status),
       );
     }
 
@@ -380,7 +417,7 @@ function getProvider(provider: SearchProvider): SearchProviderImpl {
       undefined,
       undefined,
       undefined,
-      false
+      false,
     );
   }
   return impl;
@@ -388,9 +425,16 @@ function getProvider(provider: SearchProvider): SearchProviderImpl {
 
 export async function searchWeb(
   query: string,
-  options: SearchOptions = {}
+  options: SearchOptions = {},
 ): Promise<SearchResult[]> {
-  const { provider, maxResults, region, timeoutMs, maxRetries, maxSnippetChars } = {
+  const {
+    provider,
+    maxResults,
+    region,
+    timeoutMs,
+    maxRetries,
+    maxSnippetChars,
+  } = {
     ...DEFAULT_OPTIONS,
     ...options,
   };
@@ -401,7 +445,11 @@ export async function searchWeb(
 
   const providerImpl = getProvider(provider);
 
-  for (let attemptNumber = 1; attemptNumber <= maxRetries + 1; attemptNumber += 1) {
+  for (
+    let attemptNumber = 1;
+    attemptNumber <= maxRetries + 1;
+    attemptNumber += 1
+  ) {
     try {
       return normalizeSearchResults(
         await providerImpl.search(query, {
@@ -411,25 +459,29 @@ export async function searchWeb(
           maxRetries,
           maxSnippetChars,
         }),
-        maxSnippetChars
+        maxSnippetChars,
       );
     } catch (error) {
       const searchError =
         error instanceof SearchError
           ? error
           : (() => {
-              const message = error instanceof Error ? error.message : String(error);
+              const message =
+                error instanceof Error ? error.message : String(error);
               const statusCode = inferSearchStatusCode(message);
-              const retryable = statusCode !== undefined
-                ? isRetryableSearchStatus(statusCode)
-                : isSearchRateLimitMessage(message);
+              const retryable =
+                statusCode !== undefined
+                  ? isRetryableSearchStatus(statusCode)
+                  : isSearchRateLimitMessage(message);
 
               return new SearchError(
                 `Search failed: ${message}`,
                 error,
                 statusCode,
-                isSearchRateLimitMessage(message) ? Math.min(30_000, 1000 * (2 ** attemptNumber)) : undefined,
-                retryable
+                isSearchRateLimitMessage(message)
+                  ? Math.min(30_000, 1000 * 2 ** attemptNumber)
+                  : undefined,
+                retryable,
               );
             })();
       const retriesLeft = maxRetries - (attemptNumber - 1);
@@ -443,13 +495,19 @@ export async function searchWeb(
     }
   }
 
-  throw new SearchError("Search failed after exhausting retries", undefined, undefined, undefined, false);
+  throw new SearchError(
+    "Search failed after exhausting retries",
+    undefined,
+    undefined,
+    undefined,
+    false,
+  );
 }
 
 export async function searchWithTemplate(
   template: string,
   record: Record<string, unknown>,
-  options: SearchOptions = {}
+  options: SearchOptions = {},
 ): Promise<SearchResult[]> {
   const query = formatQuery(template, record);
   return searchWeb(query, options);

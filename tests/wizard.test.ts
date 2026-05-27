@@ -1,4 +1,10 @@
-import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import {
+  existsSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { PassThrough } from "node:stream";
@@ -79,7 +85,7 @@ describe("runConfigWizard", () => {
       "employee_count",
       "integer",
       "Approximate number of employees",
-      ""
+      "",
     );
 
     const result = await runConfigWizard({
@@ -111,7 +117,8 @@ describe("runConfigWizard", () => {
         maxConcurrency: 3,
       },
       extraction: {
-        prompt: "Extract company details from the web.\nReturn strict JSON only.",
+        prompt:
+          "Extract company details from the web.\nReturn strict JSON only.",
         schema: {
           company_name: {
             type: "string",
@@ -136,7 +143,7 @@ describe("runConfigWizard", () => {
 
     writeFileSync(
       configPath,
-      "llm:\n  model: kimi-k2.5\n  apiUrl: https://ollama.com/api/chat\nresearch:\n  searchQuery: \"{name}\"\nextraction:\n  prompt: test\n  schema:\n    summary: string\n"
+      'llm:\n  model: kimi-k2.5\n  apiUrl: https://ollama.com/api/chat\nresearch:\n  searchQuery: "{name}"\nextraction:\n  prompt: test\n  schema:\n    summary: string\n',
     );
 
     mockState.answers.push("", "n");
@@ -146,7 +153,7 @@ describe("runConfigWizard", () => {
         outputPath: configPath,
         stdout,
         allowNonTTY: true,
-      })
+      }),
     ).rejects.toThrow("Wizard aborted because the target file already exists.");
   });
 
@@ -155,7 +162,7 @@ describe("runConfigWizard", () => {
       runConfigWizard({
         outputPath: "config.yaml",
         stdout: new PassThrough(),
-      })
+      }),
     ).rejects.toThrow("The config wizard requires an interactive terminal.");
   });
 
@@ -183,7 +190,7 @@ describe("runConfigWizard", () => {
       "short-description",
       "string",
       "Short description",
-      ""
+      "",
     );
 
     const result = await runConfigWizard({

@@ -12,7 +12,7 @@ describe("search helpers", () => {
     expect(
       formatQuery("Product {name} {missing}", {
         name: "Studio Headphones",
-      })
+      }),
     ).toBe("Product Studio Headphones {missing}");
   });
 
@@ -33,9 +33,13 @@ describe("search helpers", () => {
     const longText = "x".repeat(DEFAULT_MAX_SNIPPET_CHARS + 500);
 
     expect(limitSnippet(longText, DEFAULT_MAX_SNIPPET_CHARS)).toHaveLength(
-      DEFAULT_MAX_SNIPPET_CHARS + 1
+      DEFAULT_MAX_SNIPPET_CHARS + 1,
     );
-    expect(limitSnippet(longText, DEFAULT_MAX_SNIPPET_CHARS).endsWith("…")).toBe(true);
-    expect(limitSnippet("short text", DEFAULT_MAX_SNIPPET_CHARS)).toBe("short text");
+    expect(
+      limitSnippet(longText, DEFAULT_MAX_SNIPPET_CHARS).endsWith("…"),
+    ).toBe(true);
+    expect(limitSnippet("short text", DEFAULT_MAX_SNIPPET_CHARS)).toBe(
+      "short text",
+    );
   });
 });

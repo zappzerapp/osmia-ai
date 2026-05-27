@@ -25,7 +25,7 @@ const schemaFieldSchema = z.object({
 
 const schemaFieldInputSchema = z.preprocess(
   (value) => (typeof value === "string" ? { type: value } : value),
-  schemaFieldSchema
+  schemaFieldSchema,
 );
 
 const llmConfigInputSchema = z
@@ -62,7 +62,12 @@ const llmConfigInputSchema = z
     apiKeyEnv: data.api_key_env ?? data.apiKeyEnv,
   }));
 
-export const searchProviders = ["exa", "duckduckgo", "google", "ollama"] as const;
+export const searchProviders = [
+  "exa",
+  "duckduckgo",
+  "google",
+  "ollama",
+] as const;
 export type SearchProvider = (typeof searchProviders)[number];
 
 const researchConfigInputSchema = z
@@ -121,7 +126,7 @@ export const llmConfigSchema = llmConfigInputSchema.pipe(
     requestsPerMinute: z.number().int().positive(),
     maxConcurrency: z.number().int().positive(),
     apiKeyEnv: z.string().min(1),
-  })
+  }),
 );
 
 export const researchConfigSchema = researchConfigInputSchema.pipe(
@@ -134,14 +139,14 @@ export const researchConfigSchema = researchConfigInputSchema.pipe(
     maxRetries: z.number().int().positive(),
     requestsPerMinute: z.number().int().positive(),
     maxConcurrency: z.number().int().positive(),
-  })
+  }),
 );
 
 export const extractionConfigSchema = extractionConfigInputSchema.pipe(
   z.object({
     prompt: z.string().min(1),
     schema: z.record(z.string(), schemaFieldSchema),
-  })
+  }),
 );
 
 export const configSchema = z.object({

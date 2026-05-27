@@ -16,7 +16,7 @@ export class LLMError extends Error {
     public readonly cause?: unknown,
     public readonly statusCode?: number,
     public readonly retryAfterMs?: number,
-    public readonly retryable = true
+    public readonly retryable = true,
   ) {
     super(message);
     this.name = "LLMError";
@@ -60,8 +60,13 @@ function parseRetryAfter(headerValue: string | null): number | undefined {
 }
 
 function isRetryableStatus(statusCode: number): boolean {
-  return statusCode === 408 || statusCode === 409 || statusCode === 425 || statusCode === 429
-    || statusCode >= 500;
+  return (
+    statusCode === 408 ||
+    statusCode === 409 ||
+    statusCode === 425 ||
+    statusCode === 429 ||
+    statusCode >= 500
+  );
 }
 
 function isRetryableLLMError(error: unknown): error is LLMError {
@@ -77,7 +82,7 @@ function getRetryDelay(error: LLMError, attemptNumber: number): number {
     return error.retryAfterMs;
   }
 
-  return Math.min(30_000, 1000 * (2 ** (attemptNumber - 1)));
+  return Math.min(30_000, 1000 * 2 ** (attemptNumber - 1));
 }
 
 function stripMarkdownCodeBlocks(content: string): string {
@@ -107,15 +112,23 @@ function parseJSONResponse(content: string): Record<string, unknown> {
   try {
     const parsed: unknown = JSON.parse(cleaned);
 
-    if (parsed === null || typeof parsed !== "object" || Array.isArray(parsed)) {
+    if (
+      parsed === null ||
+      typeof parsed !== "object" ||
+      Array.isArray(parsed)
+    ) {
       throw new LLMError(
         `Expected JSON object, got ${
-          parsed === null ? "null" : Array.isArray(parsed) ? "array" : typeof parsed
+          parsed === null
+            ? "null"
+            : Array.isArray(parsed)
+              ? "array"
+              : typeof parsed
         }`,
         undefined,
         undefined,
         undefined,
-        false
+        false,
       );
     }
 
@@ -133,7 +146,7 @@ function parseJSONResponse(content: string): Record<string, unknown> {
       error,
       undefined,
       undefined,
-      isSyntaxError
+      isSyntaxError,
     );
   }
 }
@@ -147,15 +160,22 @@ export class LLMClient {
 
   async extract(
     systemPrompt: string,
-    userPrompt: string
+    userPrompt: string,
   ): Promise<Record<string, unknown>> {
     const maxRetries = this.config.maxRetries ?? 3;
 
-    for (let attemptNumber = 1; attemptNumber <= maxRetries + 1; attemptNumber += 1) {
+    for (
+      let attemptNumber = 1;
+      attemptNumber <= maxRetries + 1;
+      attemptNumber += 1
+    ) {
       try {
         return await this.performExtract(systemPrompt, userPrompt);
       } catch (error) {
-        const llmError = error instanceof LLMError ? error : new LLMError(String(error), error);
+        const llmError =
+          error instanceof LLMError
+            ? error
+            : new LLMError(String(error), error);
         const retriesLeft = maxRetries - (attemptNumber - 1);
 
         if (!isRetryableLLMError(llmError) || retriesLeft <= 0) {
@@ -164,18 +184,24 @@ export class LLMClient {
 
         const delayMs = getRetryDelay(llmError, attemptNumber);
         console.error(
-          `LLM extract attempt ${attemptNumber} failed: ${llmError.message}. ${retriesLeft} retries left. Waiting ${delayMs}ms before retrying.`
+          `LLM extract attempt ${attemptNumber} failed: ${llmError.message}. ${retriesLeft} retries left. Waiting ${delayMs}ms before retrying.`,
         );
         await sleep(delayMs);
       }
     }
 
-    throw new LLMError("LLM extraction failed after exhausting retries", undefined, undefined, undefined, false);
+    throw new LLMError(
+      "LLM extraction failed after exhausting retries",
+      undefined,
+      undefined,
+      undefined,
+      false,
+    );
   }
 
   private async performExtract(
     systemPrompt: string,
-    userPrompt: string
+    userPrompt: string,
   ): Promise<Record<string, unknown>> {
     const payload: LLMRequestPayload = {
       model: this.config.model,
@@ -206,7 +232,7 @@ export class LLMClient {
         error,
         undefined,
         undefined,
-        true
+        true,
       );
     }
 
@@ -217,7 +243,7 @@ export class LLMClient {
         undefined,
         response.status,
         parseRetryAfter(response.headers.get("retry-after")),
-        isRetryableStatus(response.status)
+        isRetryableStatus(response.status),
       );
     }
 
@@ -230,7 +256,7 @@ export class LLMClient {
         error,
         undefined,
         undefined,
-        false
+        false,
       );
     }
 
@@ -241,7 +267,7 @@ export class LLMClient {
         undefined,
         undefined,
         undefined,
-        false
+        false,
       );
     }
 

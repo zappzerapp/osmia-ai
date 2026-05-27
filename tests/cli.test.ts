@@ -12,7 +12,7 @@ afterEach(() => {
     const tempDir = tempDirs.pop();
     if (tempDir) {
       import("node:fs").then(({ rmSync }) =>
-        rmSync(tempDir, { recursive: true, force: true })
+        rmSync(tempDir, { recursive: true, force: true }),
       );
     }
   }
@@ -33,7 +33,9 @@ describe("isCliEntryPoint", () => {
     writeFileSync(targetPath, "#!/usr/bin/env node\n", "utf-8");
     symlinkSync(targetPath, symlinkPath);
 
-    expect(isCliEntryPoint(pathToFileURL(targetPath).href, ["node", symlinkPath])).toBe(true);
+    expect(
+      isCliEntryPoint(pathToFileURL(targetPath).href, ["node", symlinkPath]),
+    ).toBe(true);
   });
 
   it("returns false for a different executable path", () => {
@@ -44,6 +46,8 @@ describe("isCliEntryPoint", () => {
     writeFileSync(targetPath, "#!/usr/bin/env node\n", "utf-8");
     writeFileSync(otherPath, "#!/usr/bin/env node\n", "utf-8");
 
-    expect(isCliEntryPoint(pathToFileURL(targetPath).href, ["node", otherPath])).toBe(false);
+    expect(
+      isCliEntryPoint(pathToFileURL(targetPath).href, ["node", otherPath]),
+    ).toBe(false);
   });
 });

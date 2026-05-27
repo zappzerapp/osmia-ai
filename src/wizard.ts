@@ -96,12 +96,14 @@ function assertInteractiveTerminal(stdin: Readable, stdout: Writable): void {
   }
 
   throw new Error(
-    'The config wizard requires an interactive terminal. Run "osmia-ai init" directly in a TTY or pass "--config <path>" for non-interactive usage.'
+    'The config wizard requires an interactive terminal. Run "osmia-ai init" directly in a TTY or pass "--config <path>" for non-interactive usage.',
   );
 }
 
 function formatPrompt(label: string, defaultValue?: string | number): string {
-  return defaultValue === undefined ? `${label}: ` : `${label} [${defaultValue}]: `;
+  return defaultValue === undefined
+    ? `${label}: `
+    : `${label} [${defaultValue}]: `;
 }
 
 async function promptText(
@@ -112,12 +114,12 @@ async function promptText(
     defaultValue?: string;
     allowEmpty?: boolean;
     validate?: (value: string) => string | undefined;
-  } = {}
+  } = {},
 ): Promise<string> {
   while (true) {
-    const answer = (await rl.question(
-      formatPrompt(label, options.defaultValue)
-    )).trim();
+    const answer = (
+      await rl.question(formatPrompt(label, options.defaultValue))
+    ).trim();
     const value = answer || options.defaultValue || "";
 
     if (!options.allowEmpty && value.length === 0) {
@@ -140,10 +142,12 @@ async function promptNumber(
   output: Writable,
   label: string,
   defaultValue: number,
-  validate?: (value: number) => string | undefined
+  validate?: (value: number) => string | undefined,
 ): Promise<number> {
   while (true) {
-    const answer = (await rl.question(formatPrompt(label, defaultValue))).trim();
+    const answer = (
+      await rl.question(formatPrompt(label, defaultValue))
+    ).trim();
     const rawValue = answer.length === 0 ? String(defaultValue) : answer;
     const value = Number(rawValue);
 
@@ -166,12 +170,14 @@ async function promptConfirm(
   rl: ReturnType<typeof createInterface>,
   output: Writable,
   label: string,
-  defaultValue: boolean
+  defaultValue: boolean,
 ): Promise<boolean> {
   const suffix = defaultValue ? "Y/n" : "y/N";
 
   while (true) {
-    const answer = (await rl.question(`${label} [${suffix}]: `)).trim().toLowerCase();
+    const answer = (await rl.question(`${label} [${suffix}]: `))
+      .trim()
+      .toLowerCase();
 
     if (answer.length === 0) {
       return defaultValue;
@@ -193,20 +199,23 @@ async function promptMultiline(
   rl: ReturnType<typeof createInterface>,
   output: Writable,
   label: string,
-  defaultValue: string
+  defaultValue: string,
 ): Promise<string> {
   const useDefault = await promptConfirm(
     rl,
     output,
     `${label} Use the default prompt`,
-    true
+    true,
   );
 
   if (useDefault) {
     return defaultValue;
   }
 
-  writeLine(output, `${label} Enter multiple lines and finish with a single "." line.`);
+  writeLine(
+    output,
+    `${label} Enter multiple lines and finish with a single "." line.`,
+  );
   const lines: string[] = [];
 
   while (true) {
@@ -219,7 +228,12 @@ async function promptMultiline(
 
   const value = lines.join("\n").trim();
   if (value.length === 0) {
-    writeLine(output, picocolors.yellow("Using the default prompt because no custom prompt was entered."));
+    writeLine(
+      output,
+      picocolors.yellow(
+        "Using the default prompt because no custom prompt was entered.",
+      ),
+    );
     return defaultValue;
   }
 
@@ -228,7 +242,7 @@ async function promptMultiline(
 
 async function promptFieldType(
   rl: ReturnType<typeof createInterface>,
-  output: Writable
+  output: Writable,
 ): Promise<ExtractionFieldType> {
   writeLine(output, "Available field types:");
   supportedExtractionFieldTypes.forEach((type, index) => {
@@ -236,13 +250,17 @@ async function promptFieldType(
   });
 
   while (true) {
-    const answer = (await rl.question("Field type [string]: ")).trim().toLowerCase();
+    const answer = (await rl.question("Field type [string]: "))
+      .trim()
+      .toLowerCase();
 
     if (answer.length === 0) {
       return "string";
     }
 
-    const byName = supportedExtractionFieldTypes.find((type) => type === answer);
+    const byName = supportedExtractionFieldTypes.find(
+      (type) => type === answer,
+    );
     if (byName) {
       return byName;
     }
@@ -258,22 +276,25 @@ async function promptFieldType(
     writeLine(
       output,
       picocolors.red(
-        `Choose one of: ${supportedExtractionFieldTypes.join(", ")}`
-      )
+        `Choose one of: ${supportedExtractionFieldTypes.join(", ")}`,
+      ),
     );
   }
 }
 
 async function promptSchema(
   rl: ReturnType<typeof createInterface>,
-  output: Writable
+  output: Writable,
 ): Promise<Config["extraction"]["schema"]> {
   const schema: Config["extraction"]["schema"] = {};
   let fieldNumber = 1;
 
   writeLine(output);
   writeLine(output, picocolors.cyan("Extraction Schema"));
-  writeLine(output, "Add fields that the LLM should return. Leave the field name empty to finish.");
+  writeLine(
+    output,
+    "Add fields that the LLM should return. Leave the field name empty to finish.",
+  );
 
   while (true) {
     const fieldName = await promptText(
@@ -293,7 +314,7 @@ async function promptSchema(
 
           return undefined;
         },
-      }
+      },
     );
 
     if (fieldName.length === 0) {
@@ -307,7 +328,7 @@ async function promptSchema(
       "Field description (optional)",
       {
         allowEmpty: true,
-      }
+      },
     );
 
     schema[fieldName] =
@@ -328,13 +349,16 @@ async function collectWizardAnswers({
   stdout,
   outputPath,
   cwd,
-}: PromptContext & { outputPath?: string; cwd: string }): Promise<ConfigWizardResult> {
+}: PromptContext & {
+  outputPath?: string;
+  cwd: string;
+}): Promise<ConfigWizardResult> {
   const rl = createInterface({
     input: stdin,
     output: stdout,
     terminal: Boolean(
       (stdin as Readable & { isTTY?: boolean }).isTTY &&
-        (stdout as Writable & { isTTY?: boolean }).isTTY
+      (stdout as Writable & { isTTY?: boolean }).isTTY,
     ),
   });
 
@@ -355,11 +379,13 @@ async function collectWizardAnswers({
         rl,
         stdout,
         `File "${resolvedPath}" already exists. Overwrite`,
-        false
+        false,
       );
 
       if (!overwrite) {
-        throw new Error("Wizard aborted because the target file already exists.");
+        throw new Error(
+          "Wizard aborted because the target file already exists.",
+        );
       }
     }
 
@@ -384,28 +410,30 @@ async function collectWizardAnswers({
       stdout,
       "Timeout in ms",
       defaults.llm.timeout,
-      (value) => (value > 0 ? undefined : "Timeout must be greater than 0.")
+      (value) => (value > 0 ? undefined : "Timeout must be greater than 0."),
     );
     const llmRetries = await promptNumber(
       rl,
       stdout,
       "LLM max retries",
       defaults.llm.maxRetries,
-      (value) => (value > 0 ? undefined : "Retries must be greater than 0.")
+      (value) => (value > 0 ? undefined : "Retries must be greater than 0."),
     );
     const llmRequestsPerMinute = await promptNumber(
       rl,
       stdout,
       "LLM requests per minute",
       defaults.llm.requestsPerMinute,
-      (value) => (value > 0 ? undefined : "Requests per minute must be greater than 0.")
+      (value) =>
+        value > 0 ? undefined : "Requests per minute must be greater than 0.",
     );
     const llmConcurrency = await promptNumber(
       rl,
       stdout,
       "LLM max concurrency",
       defaults.llm.maxConcurrency,
-      (value) => (value > 0 ? undefined : "Concurrency must be greater than 0.")
+      (value) =>
+        value > 0 ? undefined : "Concurrency must be greater than 0.",
     );
     const apiKeyEnv = await promptText(rl, stdout, "API key env variable", {
       defaultValue: defaults.llm.apiKeyEnv,
@@ -421,7 +449,8 @@ async function collectWizardAnswers({
       stdout,
       "Max search results",
       defaults.research.maxResults,
-      (value) => (value > 0 ? undefined : "Max results must be greater than 0.")
+      (value) =>
+        value > 0 ? undefined : "Max results must be greater than 0.",
     );
     const region = await promptText(rl, stdout, "Search region", {
       defaultValue: defaults.research.region,
@@ -431,28 +460,30 @@ async function collectWizardAnswers({
       stdout,
       "Search timeout in ms",
       defaults.research.timeoutMs,
-      (value) => (value > 0 ? undefined : "Timeout must be greater than 0.")
+      (value) => (value > 0 ? undefined : "Timeout must be greater than 0."),
     );
     const searchRetries = await promptNumber(
       rl,
       stdout,
       "Search max retries",
       defaults.research.maxRetries,
-      (value) => (value > 0 ? undefined : "Retries must be greater than 0.")
+      (value) => (value > 0 ? undefined : "Retries must be greater than 0."),
     );
     const searchRequestsPerMinute = await promptNumber(
       rl,
       stdout,
       "Search requests per minute",
       defaults.research.requestsPerMinute,
-      (value) => (value > 0 ? undefined : "Requests per minute must be greater than 0.")
+      (value) =>
+        value > 0 ? undefined : "Requests per minute must be greater than 0.",
     );
     const searchConcurrency = await promptNumber(
       rl,
       stdout,
       "Search max concurrency",
       defaults.research.maxConcurrency,
-      (value) => (value > 0 ? undefined : "Concurrency must be greater than 0.")
+      (value) =>
+        value > 0 ? undefined : "Concurrency must be greater than 0.",
     );
 
     writeLine(stdout);
@@ -461,7 +492,7 @@ async function collectWizardAnswers({
       rl,
       stdout,
       "Extraction prompt.",
-      defaults.extraction.prompt
+      defaults.extraction.prompt,
     );
     const schema = await promptSchema(rl, stdout);
 
@@ -502,7 +533,7 @@ async function collectWizardAnswers({
 }
 
 export async function runConfigWizard(
-  options: ConfigWizardOptions = {}
+  options: ConfigWizardOptions = {},
 ): Promise<ConfigWizardResult> {
   const stdin = options.stdin ?? defaultStdin;
   const stdout = options.stdout ?? defaultStdout;

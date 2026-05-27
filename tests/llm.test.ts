@@ -10,7 +10,9 @@ afterEach(() => {
 
 describe("LLMClient", () => {
   it("retries retryable 429 responses and then succeeds", async () => {
-    const consoleErrorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    const consoleErrorSpy = vi
+      .spyOn(console, "error")
+      .mockImplementation(() => {});
     const fetchMock = vi
       .fn<typeof fetch>()
       .mockResolvedValueOnce(
@@ -20,7 +22,7 @@ describe("LLMClient", () => {
           headers: {
             "retry-after": "0",
           },
-        })
+        }),
       )
       .mockResolvedValueOnce(
         new Response(
@@ -34,8 +36,8 @@ describe("LLMClient", () => {
             headers: {
               "content-type": "application/json",
             },
-          }
-        )
+          },
+        ),
       );
 
     global.fetch = fetchMock;
@@ -49,14 +51,16 @@ describe("LLMClient", () => {
     });
 
     await expect(
-      client.extract("Extract fields", "Input record")
+      client.extract("Extract fields", "Input record"),
     ).resolves.toEqual({ beschreibung: "Kurzbeschreibung" });
     expect(fetchMock).toHaveBeenCalledTimes(2);
     expect(consoleErrorSpy).toHaveBeenCalledTimes(1);
   });
 
   it("retries malformed JSON content and then succeeds", async () => {
-    const consoleErrorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    const consoleErrorSpy = vi
+      .spyOn(console, "error")
+      .mockImplementation(() => {});
     const fetchMock = vi
       .fn<typeof fetch>()
       .mockResolvedValueOnce(
@@ -71,8 +75,8 @@ describe("LLMClient", () => {
             headers: {
               "content-type": "application/json",
             },
-          }
-        )
+          },
+        ),
       )
       .mockResolvedValueOnce(
         new Response(
@@ -86,8 +90,8 @@ describe("LLMClient", () => {
             headers: {
               "content-type": "application/json",
             },
-          }
-        )
+          },
+        ),
       );
 
     global.fetch = fetchMock;
@@ -101,7 +105,7 @@ describe("LLMClient", () => {
     });
 
     await expect(
-      client.extract("Extract fields", "Input record")
+      client.extract("Extract fields", "Input record"),
     ).resolves.toEqual({ beschreibung: "Kurzbeschreibung" });
     expect(fetchMock).toHaveBeenCalledTimes(2);
     expect(consoleErrorSpy).toHaveBeenCalledTimes(1);
@@ -120,8 +124,8 @@ describe("LLMClient", () => {
           headers: {
             "content-type": "application/json",
           },
-        }
-      )
+        },
+      ),
     );
 
     global.fetch = fetchMock;
@@ -134,9 +138,9 @@ describe("LLMClient", () => {
       timeout: 1000,
     });
 
-    await expect(client.extract("Extract fields", "Input record")).rejects.toBeInstanceOf(
-      LLMError
-    );
+    await expect(
+      client.extract("Extract fields", "Input record"),
+    ).rejects.toBeInstanceOf(LLMError);
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 });

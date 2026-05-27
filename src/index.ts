@@ -13,7 +13,11 @@ export {
   type LLMConfig,
   type ResearchConfig,
 } from "./config.js";
-export { LLMClient, LLMError, type LLMConfig as RuntimeLLMConfig } from "./llm.js";
+export {
+  LLMClient,
+  LLMError,
+  type LLMConfig as RuntimeLLMConfig,
+} from "./llm.js";
 export {
   createDefaultConfig,
   defaultExtractionPrompt,

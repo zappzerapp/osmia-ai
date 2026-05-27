@@ -13,7 +13,7 @@ afterEach(() => {
     if (tempDir) {
       // Best-effort cleanup for isolated test fixtures.
       import("node:fs").then(({ rmSync }) =>
-        rmSync(tempDir, { recursive: true, force: true })
+        rmSync(tempDir, { recursive: true, force: true }),
       );
     }
   }
@@ -113,7 +113,7 @@ extraction:
     beschreibung:
       type: string
 `,
-      "utf-8"
+      "utf-8",
     );
 
     const config = loadConfig(configPath);
@@ -136,8 +136,10 @@ extraction:
             alter: "date",
           },
         },
-      })
-    ).toThrow(/Schema field type must be one of|extraction\.schema\.alter\.type/);
+      }),
+    ).toThrow(
+      /Schema field type must be one of|extraction\.schema\.alter\.type/,
+    );
   });
 
   it("serializes valid config data back to YAML", () => {
@@ -174,7 +176,7 @@ extraction:
     writeFileSync(
       configPath,
       readFileSync(resolve(process.cwd(), "config.yaml.template"), "utf-8"),
-      "utf-8"
+      "utf-8",
     );
 
     expect(loadConfig(configPath)).toEqual(createDefaultConfig());

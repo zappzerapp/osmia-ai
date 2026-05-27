@@ -31,7 +31,9 @@ function parseSkipFields(skipIfExists: string | undefined): string[] {
 }
 
 function getCliVersion(): string {
-  const packageJsonPath = fileURLToPath(new URL("../package.json", import.meta.url));
+  const packageJsonPath = fileURLToPath(
+    new URL("../package.json", import.meta.url),
+  );
   const packageJson = JSON.parse(readFileSync(packageJsonPath, "utf8")) as {
     version?: unknown;
   };
@@ -49,15 +51,15 @@ function buildCommand(): Command {
     .option("-c, --config <path>", "Path to YAML configuration file")
     .option(
       "-i, --input <path>",
-      "Path to input JSON/JSONL file (optional, reads stdin if not provided)"
+      "Path to input JSON/JSONL file (optional, reads stdin if not provided)",
     )
     .option(
       "-o, --output <path>",
-      "Path to output JSON/JSONL file (optional, writes to stdout if not provided)"
+      "Path to output JSON/JSONL file (optional, writes to stdout if not provided)",
     )
     .option(
       "-s, --skip-if-exists <fields>",
-      "Comma-separated fields to skip when they already contain values"
+      "Comma-separated fields to skip when they already contain values",
     )
     .option(
       "-w, --workers <n>",
@@ -69,18 +71,18 @@ function buildCommand(): Command {
         }
         return workers;
       },
-      1
+      1,
     )
     .option("--dry-run", "Simulate processing without making LLM calls", false)
     .option(
       "--wizard [path]",
-      "Launch an interactive wizard and create a YAML config file"
+      "Launch an interactive wizard and create a YAML config file",
     )
     .option(
       "-v, --verbose",
       "Increase verbosity (repeat for more detail)",
       (_value, previous: number) => previous + 1,
-      0
+      0,
     );
 
   cli
@@ -98,14 +100,14 @@ function buildCommand(): Command {
       await runConfigWizard(
         typeof options.wizard === "string"
           ? { outputPath: options.wizard }
-          : {}
+          : {},
       );
       return;
     }
 
     if (!options.config) {
       throw new Error(
-        'Missing required option "--config <path>". Use "--wizard" or "init" to create one.'
+        'Missing required option "--config <path>". Use "--wizard" or "init" to create one.',
       );
     }
 
@@ -127,7 +129,7 @@ function buildCommand(): Command {
 
 export function isCliEntryPoint(
   metaUrl: string,
-  argv: string[] = process.argv
+  argv: string[] = process.argv,
 ): boolean {
   const entryPath = argv[1];
   if (!entryPath) {
@@ -152,7 +154,7 @@ export async function run(argv: string[] = process.argv): Promise<void> {
     const message = error instanceof Error ? error.message : String(error);
     const exitCode =
       typeof (error as { exitCode?: unknown }).exitCode === "number"
-        ? ((error as { exitCode: number }).exitCode)
+        ? (error as { exitCode: number }).exitCode
         : 1;
 
     stderr.write(`Error: ${message}\n`);
