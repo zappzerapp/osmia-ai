@@ -1,7 +1,9 @@
 import { describe, expect, it } from "vitest";
 import {
+  DEFAULT_MAX_SNIPPET_CHARS,
   formatQuery,
   formatSearchResults,
+  limitSnippet,
   type SearchResult,
 } from "../src/search.js";
 
@@ -25,5 +27,15 @@ describe("search helpers", () => {
 
     expect(formatSearchResults(results)).toContain("Studio Headphones");
     expect(formatSearchResults([])).toBe("No web results found.");
+  });
+
+  it("truncates oversized snippets", () => {
+    const longText = "x".repeat(DEFAULT_MAX_SNIPPET_CHARS + 500);
+
+    expect(limitSnippet(longText, DEFAULT_MAX_SNIPPET_CHARS)).toHaveLength(
+      DEFAULT_MAX_SNIPPET_CHARS + 1
+    );
+    expect(limitSnippet(longText, DEFAULT_MAX_SNIPPET_CHARS).endsWith("…")).toBe(true);
+    expect(limitSnippet("short text", DEFAULT_MAX_SNIPPET_CHARS)).toBe("short text");
   });
 });

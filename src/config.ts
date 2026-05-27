@@ -62,7 +62,7 @@ const llmConfigInputSchema = z
     apiKeyEnv: data.api_key_env ?? data.apiKeyEnv,
   }));
 
-export const searchProviders = ["exa", "duckduckgo", "google"] as const;
+export const searchProviders = ["exa", "duckduckgo", "google", "ollama"] as const;
 export type SearchProvider = (typeof searchProviders)[number];
 
 const researchConfigInputSchema = z

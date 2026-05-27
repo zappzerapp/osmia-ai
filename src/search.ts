@@ -13,6 +13,7 @@ export interface SearchOptions {
   region?: string;
   timeoutMs?: number;
   maxRetries?: number;
+  maxSnippetChars?: number;
 }
 
 export class SearchError extends Error {
@@ -28,13 +29,35 @@ export class SearchError extends Error {
   }
 }
 
+/** Max characters per search result snippet injected into the LLM prompt. */
+export const DEFAULT_MAX_SNIPPET_CHARS = 4000;
+
 const DEFAULT_OPTIONS: Required<Omit<SearchOptions, "provider">> & { provider: SearchProvider } = {
   provider: "exa",
   maxResults: 5,
   region: "de-de",
   timeoutMs: 10000,
   maxRetries: 3,
+  maxSnippetChars: DEFAULT_MAX_SNIPPET_CHARS,
 };
+
+export function limitSnippet(text: string, maxChars: number): string {
+  if (text.length <= maxChars) {
+    return text;
+  }
+
+  return `${text.slice(0, maxChars)}…`;
+}
+
+function normalizeSearchResults(
+  results: SearchResult[],
+  maxSnippetChars: number
+): SearchResult[] {
+  return results.map((result) => ({
+    ...result,
+    snippet: limitSnippet(result.snippet, maxSnippetChars),
+  }));
+}
 
 function inferSearchStatusCode(message: string): number | undefined {
   const statusMatch = message.match(/\b(4\d{2}|5\d{2})\b/);
@@ -104,8 +127,10 @@ export function formatSearchResults(results: SearchResult[]): string {
     .join("\n\n");
 }
 
+interface SearchProviderOptions extends Required<Omit<SearchOptions, "provider">> {}
+
 interface SearchProviderImpl {
-  search(query: string, options: Required<Omit<SearchOptions, "provider">>): Promise<SearchResult[]>;
+  search(query: string, options: SearchProviderOptions): Promise<SearchResult[]>;
 }
 
 function getExaApiKey(): string {
@@ -150,6 +175,20 @@ function getGoogleSearchEngineId(): string {
   return cx;
 }
 
+function getOllamaApiKey(): string {
+  const apiKey = process.env.OLLAMA_API_KEY;
+  if (!apiKey) {
+    throw new SearchError(
+      "OLLAMA_API_KEY environment variable is required for Ollama provider. Get your API key at https://ollama.com/settings/keys",
+      undefined,
+      undefined,
+      undefined,
+      false
+    );
+  }
+  return apiKey;
+}
+
 const exaProvider: SearchProviderImpl = {
   async search(query: string, options: Required<Omit<SearchOptions, "provider">>): Promise<SearchResult[]> {
     const apiKey = getExaApiKey();
@@ -159,7 +198,7 @@ const exaProvider: SearchProviderImpl = {
 
     const searchPromise = exa.searchAndContents(query, {
       numResults: options.maxResults,
-      text: true,
+      text: { maxCharacters: options.maxSnippetChars },
       useAutoprompt: true,
     });
 
@@ -274,17 +313,70 @@ const googleProvider: SearchProviderImpl = {
   },
 };
 
+const ollamaProvider: SearchProviderImpl = {
+  async search(query: string, options: Required<Omit<SearchOptions, "provider">>): Promise<SearchResult[]> {
+    const apiKey = getOllamaApiKey();
+
+    const searchPromise = fetch("https://ollama.com/api/web_search", {
+      method: "POST",
+      headers: {
+        "Authorization": `Bearer ${apiKey}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        query,
+        max_results: options.maxResults,
+      }),
+    });
+
+    interface OllamaResult {
+      title: string;
+      url: string;
+      content: string;
+    }
+
+    interface OllamaSearchResponse {
+      results: OllamaResult[];
+    }
+
+    const response = await Promise.race([
+      searchPromise,
+      createTimeout(options.timeoutMs),
+    ]);
+
+    if (!response.ok) {
+      const text = await response.text();
+      throw new SearchError(
+        `Ollama Web Search API error: ${response.status} ${text}`,
+        undefined,
+        response.status,
+        undefined,
+        isRetryableSearchStatus(response.status)
+      );
+    }
+
+    const data = (await response.json()) as OllamaSearchResponse;
+
+    return data.results.map((result) => ({
+      title: result.title,
+      url: result.url,
+      snippet: result.content,
+    }));
+  },
+};
+
 const providers: Record<SearchProvider, SearchProviderImpl> = {
   exa: exaProvider,
   duckduckgo: duckduckgoProvider,
   google: googleProvider,
+  ollama: ollamaProvider,
 };
 
 function getProvider(provider: SearchProvider): SearchProviderImpl {
   const impl = providers[provider];
   if (!impl) {
     throw new SearchError(
-      `Unknown search provider: ${provider}. Supported providers: exa, duckduckgo, google`,
+      `Unknown search provider: ${provider}. Supported providers: exa, duckduckgo, google, ollama`,
       undefined,
       undefined,
       undefined,
@@ -298,7 +390,7 @@ export async function searchWeb(
   query: string,
   options: SearchOptions = {}
 ): Promise<SearchResult[]> {
-  const { provider, maxResults, region, timeoutMs, maxRetries } = {
+  const { provider, maxResults, region, timeoutMs, maxRetries, maxSnippetChars } = {
     ...DEFAULT_OPTIONS,
     ...options,
   };
@@ -311,12 +403,16 @@ export async function searchWeb(
 
   for (let attemptNumber = 1; attemptNumber <= maxRetries + 1; attemptNumber += 1) {
     try {
-      return await providerImpl.search(query, {
-        maxResults,
-        region,
-        timeoutMs,
-        maxRetries,
-      });
+      return normalizeSearchResults(
+        await providerImpl.search(query, {
+          maxResults,
+          region,
+          timeoutMs,
+          maxRetries,
+          maxSnippetChars,
+        }),
+        maxSnippetChars
+      );
     } catch (error) {
       const searchError =
         error instanceof SearchError
