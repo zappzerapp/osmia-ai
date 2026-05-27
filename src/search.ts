@@ -218,8 +218,7 @@ const exaProvider: SearchProviderImpl = {
     options: Required<Omit<SearchOptions, "provider">>,
   ): Promise<SearchResult[]> {
     const apiKey = getExaApiKey();
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
-    const Exa = require("exa-js").default;
+    const { Exa } = await import("exa-js");
     const exa = new Exa(apiKey);
 
     const searchPromise = exa.searchAndContents(query, {
@@ -256,8 +255,7 @@ const duckduckgoProvider: SearchProviderImpl = {
     query: string,
     options: Required<Omit<SearchOptions, "provider">>,
   ): Promise<SearchResult[]> {
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
-    const { DDGS } = require("@phukon/duckduckgo-search");
+    const { DDGS } = await import("@phukon/duckduckgo-search");
 
     const ddgs = new DDGS({ timeout: options.timeoutMs });
 
