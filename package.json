@@ -1,6 +1,6 @@
 {
   "name": "osmia-ai",
-  "version": "0.3.1",
+  "version": "0.4.0",
   "description": "AI-powered data enrichment CLI tool",
   "type": "module",
   "main": "./dist/index.js",
@@ -46,15 +46,18 @@
     "url": "https://github.com/zappzerapp/osmia-ai/issues"
   },
   "dependencies": {
+    "@mozilla/readability": "^0.5.0",
     "@phukon/duckduckgo-search": "^1.1.0",
     "commander": "^12.1.0",
     "exa-js": "^1.0.12",
+    "jsdom": "^26.1.0",
     "p-queue": "^8.0.1",
     "picocolors": "^1.1.1",
     "yaml": "^2.6.1",
     "zod": "^3.23.8"
   },
   "devDependencies": {
+    "@types/jsdom": "^21.1.7",
     "@types/node": "^24.0.0",
     "@vitest/coverage-v8": "^2.1.8",
     "tsx": "^4.19.2",

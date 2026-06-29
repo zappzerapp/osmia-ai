@@ -16,8 +16,11 @@ cat input.json | npx osmia-ai --config config.yaml > enriched.json
 - **Stateless**: Pure data transformation, no persistent state
 - **Unix Pipes**: Native stdin/stdout support
 - **Resilient**: Retries with backoff and `429` handling for search and LLM calls
-- **Concurrent**: Configurable workers with separate throttles for search and LLM
+- **Full-page content**: Optionally fetch and readability-clean each result URL for richer extraction context (config-driven, no extra flag)
+- **Concurrent**: Configurable workers with separate throttles for search, page fetch, and LLM
 - **Smart Skip**: Skip already-enriched records (--skip-if-exists)
+- **Streaming JSONL**: JSONL output streams record-by-record so completed records persist even if the batch aborts
+- **Resume**: Re-run interrupted batches with --resume, skipping records already present in the output file
 - **Configurable**: YAML config with templated search queries
 - **JSONL Support**: Works with JSONL input and output formats
 
@@ -97,6 +100,8 @@ Options:
   -s, --skip-if-exists <fields>  Comma-separated fields to skip if non-empty
   -w, --workers <n>             Concurrent workers (default: 1)
   --dry-run                     Simulate without LLM calls
+  --resume                       Resume an interrupted batch (skip records already in the output file; requires JSONL output)
+  --resume-key <field>           Field used to identify records for --resume (default: id; falls back to input index)
   --wizard [path]               Launch an interactive wizard and create a YAML config file
   -v, --verbose                 Verbosity (use -v or -vv)
 ```
@@ -147,6 +152,28 @@ osmia-ai --config config.yaml --input data.json --workers 5 --verbose
 osmia-ai --config config.yaml --input data.json --dry-run -vv
 ```
 
+### Resume an Interrupted Batch
+
+JSONL output streams record-by-record: each successfully processed record is written as soon as
+it completes, so if a long batch aborts (a record fails, the process is killed, or the network
+drops) the records already finished are safe on disk. Re-run the same command with `--resume` to
+skip the records already present in the output file and continue with the rest:
+
+```bash
+osmia-ai --config config.yaml --input data.json --output enriched.jsonl --resume
+```
+
+`--resume` reads the existing output file, parses the completed records, and skips any input
+record whose key is already present. By default the key is the record's `id` field; change it
+with `--resume-key <field>`. When the key field is absent on a record, osmia falls back to that
+record's original input index (as a string), so unstable inputs still resume — imperfectly, since
+the index fallback only matches when the output order lines up with the input order.
+
+`--resume` requires JSONL output because it appends to the file. If the configured output would
+be a JSON array (e.g. an `.json` path), osmia automatically switches to JSONL and logs a warning.
+`--resume` with stdout output (no `--output` file) is a no-op: there is no file to read from, so
+a warning is logged and every record is processed normally.
+
 ## Configuration
 
 **Templating**: Use `{fieldName}` placeholders in `searchQuery`—they're replaced from input records.
@@ -168,6 +195,64 @@ Set `research.provider` in your YAML config. Supported values: `exa` (default), 
 
 The LLM always uses the key named by `llm.apiKeyEnv` (default: `OLLAMA_API_KEY`).
 
+### Full-page content
+
+By default the LLM only sees the short snippets returned by the search provider. Enable
+`research.fetchPageContent` to fetch each result URL, extract the main article text with
+Readability, and feed that into the extraction prompt instead of the snippet. This is the single
+biggest quality lever, but it is slower, sends more tokens to the LLM, and adds a second
+rate-limited HTTP queue.
+
+```yaml
+research:
+  fetchPageContent: true
+  maxPageChars: 8000          # cap per result (snippet is capped at this, not 4000)
+  pageFetchTimeoutMs: 15000
+  pageFetchMaxRetries: 2
+  pageFetchRequestsPerMinute: 20
+  pageFetchMaxConcurrency: 2
+```
+
+This is config-driven — there is no `--fetch` flag. Fetch failures are non-fatal: a warning is
+logged and the original search snippet is kept, so a record never fails because a page would not
+load. Non-HTML responses (PDFs, images) and non-http(s) URLs are skipped automatically.
+
+Note: the `exa` provider already returns page text via its contents API, so this option mainly
+benefits `duckduckgo`, `google`, and `ollama`, which only return short snippets.
+
+### Structured outputs
+
+Structured outputs are enabled by default (`llm.structuredOutput: true`). When on, osmia sends the
+extraction schema as a [JSON Schema](https://json-schema.org/) object in Ollama's `format` field so the
+model is constrained to the configured shape. This noticeably improves reliability for small local
+models and reduces the need for response repair.
+
+The response is still parsed with the same fallback logic (`parseJSONResponse` /
+`stripMarkdownCodeBlocks`), so a model that returns malformed JSON or wraps it in markdown code fences
+keeps working. The final zod validation in the pipeline is unchanged.
+
+Disable it for non-Ollama-compatible endpoints that do not accept a JSON Schema `format`:
+
+```yaml
+llm:
+  structuredOutput: false
+```
+
+### Source provenance
+
+Set `extraction.includeSources: true` to attach the URLs (and titles) of the search results that
+fed each record's extraction as an array on the output record. By default the field is named
+`_sources` and lists `{ url, title }` objects — the same results the LLM was given — so each
+enrichment is machine-checkable against its origins. Rename the field with
+`extraction.sourcesField` if it collides with a real data field. The array is added after the
+LLM extraction and validation, so it never reaches the model or the extraction schema.
+
+```yaml
+extraction:
+  includeSources: true
+  sourcesField: _sources
+```
+
 ## Use Cases
 
 - **E-commerce**: Enrich product catalogs with specs and descriptions
@@ -186,7 +271,7 @@ npm test
 
 Both `camelCase` and legacy `snake_case` config keys are accepted when loading YAML files.
 
-Runs abort before writing output if any record fails, so batch jobs do not silently leave behind partial result files.
+For JSON-array output (`.json` or stdout), the pipeline aborts before writing if any record fails, so batch jobs do not silently leave behind partial result files. For JSONL output, records stream record-by-record as they complete, so completed records persist on disk even when a later record fails — re-run with `--resume` (see above) to continue the batch.
 
 For large batches, start conservatively with `--workers 2` or `--workers 3` and increase `requestsPerMinute` only after
 confirming that both your search provider and LLM endpoint accept the traffic without returning `429` responses.

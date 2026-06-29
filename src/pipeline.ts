@@ -1,7 +1,4 @@
-import { once } from "node:events";
-import { createWriteStream, readFileSync } from "node:fs";
-import { rename, rm } from "node:fs/promises";
-import { basename, dirname, join } from "node:path";
+import { existsSync, readFileSync } from "node:fs";
 import { stderr } from "node:process";
 import { Readable, Writable } from "node:stream";
 import PQueue from "p-queue";
@@ -15,13 +12,21 @@ import {
   type LLMConfig as AppLLMConfig,
   type ResearchConfig,
 } from "./config.js";
-import { LLMClient, type LLMConfig } from "./llm.js";
+import { LLMClient, buildJsonSchema, type LLMConfig } from "./llm.js";
 import {
   formatQuery,
   formatSearchResults,
   searchWeb,
   type SearchResult,
 } from "./search.js";
+import { fetchPageContent, type PageContent } from "./fetcher.js";
+import {
+  computeRecordKey,
+  createRecordWriter,
+  detectJsonlFormat,
+  readExistingRecords,
+} from "./output.js";
+export { detectJsonlFormat };
 
 export interface PipelineOptions {
   config: string;
@@ -35,6 +40,11 @@ export interface PipelineOptions {
   stdout?: Writable;
   llmClient?: Pick<LLMClient, "extract">;
   searchFn?: typeof searchWeb;
+  fetchFn?: typeof fetchPageContent;
+  /** Resume an interrupted batch by skipping records already in the output. */
+  resume?: boolean;
+  /** Field used to identify records for --resume (default "id"). */
+  resumeKey?: string;
 }
 
 export interface PipelineRecord {
@@ -281,24 +291,6 @@ export async function loadInputData(
   return records;
 }
 
-export function detectJsonlFormat(content: string): boolean {
-  const lines = content.split("\n").filter((line) => line.trim().length > 0);
-  if (lines.length <= 1) {
-    return false;
-  }
-
-  return lines.every((line) => {
-    try {
-      const parsed = JSON.parse(line);
-      return (
-        typeof parsed === "object" && parsed !== null && !Array.isArray(parsed)
-      );
-    } catch {
-      return false;
-    }
-  });
-}
-
 function shouldUseJsonlOutput(
   rawContent: string,
   inputPath: string | undefined,
@@ -319,50 +311,27 @@ function shouldUseJsonlOutput(
   return detectJsonlFormat(rawContent);
 }
 
+/**
+ * Writes records in a single batch. Kept as a thin wrapper over the
+ * RecordWriter so legacy callers (and tests) keep working while runPipeline
+ * streams through the same writer implementation.
+ */
 export async function saveOutputData(
   records: PipelineRecord[],
   outputPath?: string,
   stdoutStream?: Writable,
   useJsonl = false,
 ): Promise<void> {
-  async function writeRecords(destination: Writable): Promise<void> {
-    const chunks = useJsonl
-      ? records.map((record) => `${JSON.stringify(record)}\n`)
-      : [JSON.stringify(records, null, 2)];
-
-    for (const chunk of chunks) {
-      const canContinue = destination.write(chunk);
-      if (!canContinue) {
-        await once(destination, "drain");
-      }
-    }
+  const writer = createRecordWriter({
+    outputPath,
+    stdoutStream,
+    useJsonl,
+    append: false,
+  });
+  for (const record of records) {
+    await writer.writeRecord(record);
   }
-
-  if (outputPath) {
-    const tempOutputPath = join(
-      dirname(outputPath),
-      `.${basename(outputPath)}.${process.pid}.${Date.now()}.tmp`,
-    );
-    const writeStream = createWriteStream(tempOutputPath);
-
-    try {
-      await writeRecords(writeStream);
-      writeStream.end();
-      await Promise.race([
-        once(writeStream, "finish").then(() => undefined),
-        once(writeStream, "error").then(([error]) => Promise.reject(error)),
-      ]);
-      await rename(tempOutputPath, outputPath);
-    } catch (error) {
-      writeStream.destroy();
-      await rm(tempOutputPath, { force: true }).catch(() => undefined);
-      throw error;
-    }
-
-    return;
-  }
-
-  await writeRecords(stdoutStream ?? process.stdout);
+  await writer.close();
 }
 
 function resolveLLMConfig(config: AppLLMConfig): LLMConfig {
@@ -382,6 +351,7 @@ function resolveLLMConfig(config: AppLLMConfig): LLMConfig {
     maxRetries: config.maxRetries,
     requestsPerMinute: config.requestsPerMinute,
     maxConcurrency: config.maxConcurrency,
+    structuredOutput: config.structuredOutput,
   };
 }
 
@@ -411,13 +381,74 @@ function createExtractionPrompts(
   return { systemPrompt, userPrompt };
 }
 
+async function fetchResultPages(
+  searchResults: SearchResult[],
+  config: Config,
+  fetchFn: typeof fetchPageContent,
+  fetchQueue: PQueue,
+  verbose: number,
+): Promise<SearchResult[]> {
+  if (!config.research.fetchPageContent || searchResults.length === 0) {
+    return searchResults;
+  }
+
+  const fetched = await Promise.all(
+    searchResults.map((result) =>
+      fetchQueue
+        .add<PageContent | null>(() =>
+          fetchFn(result.url, {
+            maxChars: config.research.maxPageChars,
+            timeoutMs: config.research.pageFetchTimeoutMs,
+            maxRetries: config.research.pageFetchMaxRetries,
+          }).then(
+            (page) => page,
+            (error: unknown) => {
+              logMessage(
+                picocolors.yellow(
+                  `  Warning: failed to fetch ${result.url}: ${
+                    error instanceof Error ? error.message : String(error)
+                  }`,
+                ),
+                verbose,
+                1,
+              );
+              return null;
+            },
+          ),
+        )
+        .catch(() => null),
+    ),
+  );
+
+  return searchResults.map((result, index) => {
+    const page = fetched[index];
+    if (page && page.text.trim()) {
+      logMessage(
+        picocolors.dim(
+          `  Fetched page for ${result.url}, chars=${page.text.length}`,
+        ),
+        verbose,
+        2,
+      );
+      return {
+        title: result.title,
+        url: result.url,
+        snippet: page.text,
+      };
+    }
+    return result;
+  });
+}
+
 async function processRecord(
   record: PipelineRecord,
   config: Config,
   llmClient: Pick<LLMClient, "extract"> | undefined,
   extractionSchema: z.ZodObject<Record<string, z.ZodType<unknown>>>,
   searchFn: typeof searchWeb,
+  fetchFn: typeof fetchPageContent,
   searchQueue: PQueue,
+  fetchQueue: PQueue,
   llmQueue: PQueue,
   options: PipelineOptions,
   index: number,
@@ -462,6 +493,9 @@ async function processRecord(
         region: config.research.region,
         timeoutMs: config.research.timeoutMs,
         maxRetries: config.research.maxRetries,
+        ...(config.research.fetchPageContent
+          ? { maxSnippetChars: config.research.maxPageChars }
+          : {}),
       }),
     );
     if (!searchResults) {
@@ -473,14 +507,23 @@ async function processRecord(
       2,
     );
 
+    const enrichedResults = await fetchResultPages(
+      searchResults,
+      config,
+      fetchFn,
+      fetchQueue,
+      options.verbose,
+    );
+
     const { systemPrompt, userPrompt } = createExtractionPrompts(
       config,
       record,
       query,
-      searchResults,
+      enrichedResults,
     );
+    const schemaJson = buildJsonSchema(config.extraction.schema);
     const extractionResult = await llmQueue.add<Record<string, unknown>>(() =>
-      llmClient.extract(systemPrompt, userPrompt),
+      llmClient.extract(systemPrompt, userPrompt, schemaJson),
     );
     if (!extractionResult) {
       throw new Error("LLM queue task did not return extracted data");
@@ -495,11 +538,20 @@ async function processRecord(
       2,
     );
 
+    const enrichedRecord: PipelineRecord = {
+      ...record,
+      ...extracted,
+    };
+
+    if (config.extraction.includeSources) {
+      const sources = searchResults
+        .filter((result) => typeof result.url === "string" && result.url.length > 0)
+        .map((result) => ({ url: result.url, title: result.title }));
+      enrichedRecord[config.extraction.sourcesField] = sources;
+    }
+
     return {
-      record: {
-        ...record,
-        ...extracted,
-      },
+      record: enrichedRecord,
       success: true,
     };
   } catch (error) {
@@ -531,19 +583,84 @@ export async function runPipeline(options: PipelineOptions): Promise<void> {
     return;
   }
 
-  const useJsonl = shouldUseJsonlOutput(
+  let useJsonl = shouldUseJsonlOutput(
     rawContent,
     options.inputPath,
     options.outputPath,
   );
+
+  const resumeEnabled = options.resume === true;
+  const resumeKey = options.resumeKey ?? "id";
+  const completedKeys = new Set<string>();
+  let appendMode = false;
+
+  if (resumeEnabled) {
+    if (!options.outputPath) {
+      logMessage(
+        picocolors.yellow(
+          "--resume requires a file output (--output); ignoring --resume for stdout",
+        ),
+        options.verbose,
+        1,
+      );
+    } else {
+      if (!useJsonl) {
+        useJsonl = true;
+        logMessage(
+          picocolors.yellow(
+            `--resume requires JSONL output; switching ${options.outputPath} to JSONL`,
+          ),
+          options.verbose,
+          1,
+        );
+      }
+
+      if (existsSync(options.outputPath)) {
+        const existing = readExistingRecords(options.outputPath);
+        for (let i = 0; i < existing.length; i++) {
+          const existingRecord = existing[i];
+          if (existingRecord) {
+            completedKeys.add(computeRecordKey(existingRecord, resumeKey, i));
+          }
+        }
+        appendMode = true;
+        logMessage(
+          picocolors.dim(
+            `--resume: ${existing.length} record(s) already in output, will skip them`,
+          ),
+          options.verbose,
+          1,
+        );
+      } else {
+        logMessage(
+          picocolors.dim("--resume: output file not found, starting fresh"),
+          options.verbose,
+          1,
+        );
+      }
+    }
+  }
+
+  const writer = createRecordWriter({
+    outputPath: options.outputPath,
+    stdoutStream: options.stdout,
+    useJsonl,
+    append: appendMode,
+  });
+
   const llmClient = options.dryRun
     ? undefined
     : (options.llmClient ?? new LLMClient(resolveLLMConfig(config.llm)));
   const extractionSchema = createExtractionOutputSchema(config.extraction);
   const searchFn = options.searchFn ?? searchWeb;
+  const fetchFn = options.fetchFn ?? fetchPageContent;
   const searchQueue = createRateLimitedQueue(
     config.research.requestsPerMinute,
     config.research.maxConcurrency,
+  );
+  const fetchQueue = createRateLimitedQueue(
+    config.research.pageFetchRequestsPerMinute,
+    config.research.pageFetchMaxConcurrency,
   );
   const llmQueue = createRateLimitedQueue(
     config.llm.requestsPerMinute,
@@ -570,29 +687,54 @@ export async function runPipeline(options: PipelineOptions): Promise<void> {
     2,
   );
 
+  if (config.research.fetchPageContent) {
+    logMessage(
+      picocolors.dim(
+        `Page fetch throttled to ${config.research.pageFetchRequestsPerMinute} req/min with concurrency ${config.research.pageFetchMaxConcurrency} (max ${config.research.maxPageChars} chars)`,
+      ),
+      options.verbose,
+      2,
+    );
+  }
+
   const queue = new PQueue({ concurrency: options.workers });
-  const results: ProcessResult[] = [];
   let processed = 0;
   let succeeded = 0;
   let failed = 0;
   let skipped = 0;
+  let resumedSkipped = 0;
+  let written = 0;
 
   const tasks = inputRecords.map((record, index) =>
     queue.add(async () => {
+      if (resumeEnabled && completedKeys.size > 0) {
+        const key = computeRecordKey(record, resumeKey, index);
+        if (completedKeys.has(key)) {
+          logMessage(
+            picocolors.dim(`Skipping ${key} (already in output, --resume)`),
+            options.verbose,
+            1,
+          );
+          resumedSkipped++;
+          return;
+        }
+      }
+
       const result = await processRecord(
         record,
         config,
         llmClient,
         extractionSchema,
         searchFn,
+        fetchFn,
         searchQueue,
+        fetchQueue,
         llmQueue,
         options,
         index,
         inputRecords.length,
       );
 
-      results[index] = result;
       processed++;
 
       if (result.skipped) {
@@ -601,6 +743,11 @@ export async function runPipeline(options: PipelineOptions): Promise<void> {
         succeeded++;
       } else {
         failed++;
+      }
+
+      if (result.success) {
+        await writer.writeRecord(result.record);
+        written++;
       }
 
       if (options.verbose >= 1 && processed % 10 === 0) {
@@ -613,27 +760,62 @@ export async function runPipeline(options: PipelineOptions): Promise<void> {
     }),
   );
 
-  await Promise.all(tasks);
+  let unexpected: unknown = null;
+  try {
+    await Promise.all(tasks);
+  } catch (error) {
+    unexpected = error;
+  }
 
-  if (failed > 0) {
-    logMessage(
-      picocolors.yellow(
-        "Skipping output write because one or more records failed",
-      ),
-      options.verbose,
-      1,
-    );
+  const aborted = failed > 0 || unexpected !== null;
+  try {
+    if (aborted && !useJsonl) {
+      // JSON-array output keeps the historical abort semantics: nothing is
+      // written when any record fails.
+      await writer.discard();
+    } else {
+      // For JSONL, already-streamed records persist on abort by design; close
+      // flushes the stream. On success this writes the buffered array.
+      await writer.close();
+    }
+  } catch (closeError) {
+    if (!aborted) {
+      throw closeError;
+    }
+    // On abort, surface the original failure rather than the close error.
+  }
+
+  if (unexpected !== null) {
+    throw unexpected;
+  }
+
+  if (aborted) {
+    if (useJsonl) {
+      logMessage(
+        picocolors.yellow(
+          `${written} record(s) already streamed to output; re-run with --resume to continue`,
+        ),
+        options.verbose,
+        1,
+      );
+    } else {
+      logMessage(
+        picocolors.yellow(
+          "Skipping output write because one or more records failed",
+        ),
+        options.verbose,
+        1,
+      );
+    }
     const error = new Error(`${failed} record(s) failed to process`);
     (error as Error & { exitCode: number }).exitCode = 1;
     throw error;
   }
 
-  logMessage(picocolors.dim("Writing output..."), options.verbose, 2);
-  await saveOutputData(
-    results.map((result) => result.record),
-    options.outputPath,
-    options.stdout,
-    useJsonl,
+  logMessage(
+    picocolors.green(`Wrote ${written} record(s) to output`),
+    options.verbose,
+    2,
   );
 
   if (options.verbose >= 1) {
@@ -645,6 +827,13 @@ export async function runPipeline(options: PipelineOptions): Promise<void> {
     stderr.write(
       `  Skipped:   ${skipped > 0 ? picocolors.yellow(String(skipped)) : "0"}\n`,
     );
+    if (resumedSkipped > 0) {
+      stderr.write(
+        `  Resumed:   ${picocolors.dim(
+          String(resumedSkipped),
+        )} (skipped via --resume)\n`,
+      );
+    }
   }
 }
 

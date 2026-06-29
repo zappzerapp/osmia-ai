@@ -18,6 +18,9 @@ research:
   maxRetries: 3
   requestsPerMinute: 30
   maxConcurrency: 1
+  # Optional: fetch full page content per result for richer extraction context.
+  # fetchPageContent: true
+  # maxPageChars: 8000
 
 extraction:
   prompt: |

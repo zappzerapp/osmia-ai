@@ -17,6 +17,8 @@ interface CliOptions {
   workers: number;
   dryRun: boolean;
   verbose: number;
+  resume?: boolean;
+  resumeKey?: string;
 }
 
 function parseSkipFields(skipIfExists: string | undefined): string[] {
@@ -75,6 +77,15 @@ function buildCommand(): Command {
     )
     .option("--dry-run", "Simulate processing without making LLM calls", false)
     .option(
+      "--resume",
+      "Resume an interrupted batch: skip records already present in the output file (requires JSONL output and a file --output)",
+    )
+    .option(
+      "--resume-key <field>",
+      "Field used to identify records for --resume (default: id; falls back to input index when absent)",
+      "id",
+    )
+    .option(
       "--wizard [path]",
       "Launch an interactive wizard and create a YAML config file",
     )
@@ -119,6 +130,8 @@ function buildCommand(): Command {
       verbose: options.verbose,
       ...(options.input ? { inputPath: options.input } : {}),
       ...(options.output ? { outputPath: options.output } : {}),
+      ...(options.resume ? { resume: true } : {}),
+      ...(options.resumeKey ? { resumeKey: options.resumeKey } : {}),
     };
 
     await runPipeline(pipelineOptions);

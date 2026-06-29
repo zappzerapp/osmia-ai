@@ -42,6 +42,8 @@ const llmConfigInputSchema = z
     max_concurrency: z.number().int().positive().optional(),
     apiKeyEnv: z.string().min(1).default("OLLAMA_API_KEY"),
     api_key_env: z.string().min(1).optional(),
+    structuredOutput: z.boolean().default(true),
+    structured_output: z.boolean().optional(),
   })
   .superRefine((data, ctx) => {
     if (!data.apiUrl && !data.api_url) {
@@ -60,6 +62,7 @@ const llmConfigInputSchema = z
     requestsPerMinute: data.requests_per_minute ?? data.requestsPerMinute,
     maxConcurrency: data.max_concurrency ?? data.maxConcurrency,
     apiKeyEnv: data.api_key_env ?? data.apiKeyEnv,
+    structuredOutput: data.structured_output ?? data.structuredOutput,
   }));
 
 export const searchProviders = [
@@ -86,6 +89,18 @@ const researchConfigInputSchema = z
     requests_per_minute: z.number().int().positive().optional(),
     maxConcurrency: z.number().int().positive().default(1),
     max_concurrency: z.number().int().positive().optional(),
+    fetchPageContent: z.boolean().default(false),
+    fetch_page_content: z.boolean().optional(),
+    maxPageChars: z.number().int().positive().default(8000),
+    max_page_chars: z.number().int().positive().optional(),
+    pageFetchTimeoutMs: z.number().int().positive().default(15000),
+    page_fetch_timeout_ms: z.number().int().positive().optional(),
+    pageFetchMaxRetries: z.number().int().positive().default(2),
+    page_fetch_max_retries: z.number().int().positive().optional(),
+    pageFetchRequestsPerMinute: z.number().int().positive().default(20),
+    page_fetch_requests_per_minute: z.number().int().positive().optional(),
+    pageFetchMaxConcurrency: z.number().int().positive().default(2),
+    page_fetch_max_concurrency: z.number().int().positive().optional(),
   })
   .superRefine((data, ctx) => {
     if (!data.searchQuery && !data.search_query) {
@@ -105,16 +120,31 @@ const researchConfigInputSchema = z
     maxRetries: data.max_retries ?? data.maxRetries,
     requestsPerMinute: data.requests_per_minute ?? data.requestsPerMinute,
     maxConcurrency: data.max_concurrency ?? data.maxConcurrency,
+    fetchPageContent: data.fetch_page_content ?? data.fetchPageContent,
+    maxPageChars: data.max_page_chars ?? data.maxPageChars,
+    pageFetchTimeoutMs: data.page_fetch_timeout_ms ?? data.pageFetchTimeoutMs,
+    pageFetchMaxRetries:
+      data.page_fetch_max_retries ?? data.pageFetchMaxRetries,
+    pageFetchRequestsPerMinute:
+      data.page_fetch_requests_per_minute ?? data.pageFetchRequestsPerMinute,
+    pageFetchMaxConcurrency:
+      data.page_fetch_max_concurrency ?? data.pageFetchMaxConcurrency,
   }));
 
 const extractionConfigInputSchema = z
   .object({
     prompt: z.string().min(1, "Prompt is required"),
     schema: z.record(z.string(), schemaFieldInputSchema),
+    includeSources: z.boolean().default(false),
+    include_sources: z.boolean().optional(),
+    sourcesField: z.string().min(1).default("_sources"),
+    sources_field: z.string().min(1).optional(),
   })
   .transform((data) => ({
     prompt: data.prompt,
     schema: data.schema,
+    includeSources: data.include_sources ?? data.includeSources,
+    sourcesField: data.sources_field ?? data.sourcesField,
   }));
 
 export const llmConfigSchema = llmConfigInputSchema.pipe(
@@ -126,6 +156,7 @@ export const llmConfigSchema = llmConfigInputSchema.pipe(
     requestsPerMinute: z.number().int().positive(),
     maxConcurrency: z.number().int().positive(),
     apiKeyEnv: z.string().min(1),
+    structuredOutput: z.boolean(),
   }),
 );
 
@@ -139,6 +170,12 @@ export const researchConfigSchema = researchConfigInputSchema.pipe(
     maxRetries: z.number().int().positive(),
     requestsPerMinute: z.number().int().positive(),
     maxConcurrency: z.number().int().positive(),
+    fetchPageContent: z.boolean(),
+    maxPageChars: z.number().int().positive(),
+    pageFetchTimeoutMs: z.number().int().positive(),
+    pageFetchMaxRetries: z.number().int().positive(),
+    pageFetchRequestsPerMinute: z.number().int().positive(),
+    pageFetchMaxConcurrency: z.number().int().positive(),
   }),
 );
 
@@ -146,6 +183,8 @@ export const extractionConfigSchema = extractionConfigInputSchema.pipe(
   z.object({
     prompt: z.string().min(1),
     schema: z.record(z.string(), schemaFieldSchema),
+    includeSources: z.boolean(),
+    sourcesField: z.string().min(1),
   }),
 );
 

@@ -68,6 +68,7 @@ describe("runConfigWizard", () => {
       "20",
       "2",
       "OSMIA_TEST_KEY",
+      "",
       "{title} company profile",
       "7",
       "en-us",
@@ -75,6 +76,7 @@ describe("runConfigWizard", () => {
       "5",
       "12",
       "3",
+      "n",
       "n",
       "Extract company details from the web.",
       "Return strict JSON only.",
@@ -86,6 +88,7 @@ describe("runConfigWizard", () => {
       "integer",
       "Approximate number of employees",
       "",
+      "n",
     );
 
     const result = await runConfigWizard({
@@ -105,6 +108,7 @@ describe("runConfigWizard", () => {
         requestsPerMinute: 20,
         maxConcurrency: 2,
         apiKeyEnv: "OSMIA_TEST_KEY",
+        structuredOutput: true,
       },
       research: {
         searchQuery: "{title} company profile",
@@ -115,6 +119,12 @@ describe("runConfigWizard", () => {
         maxRetries: 5,
         requestsPerMinute: 12,
         maxConcurrency: 3,
+        fetchPageContent: false,
+        maxPageChars: 8000,
+        pageFetchTimeoutMs: 15000,
+        pageFetchMaxRetries: 2,
+        pageFetchRequestsPerMinute: 20,
+        pageFetchMaxConcurrency: 2,
       },
       extraction: {
         prompt:
@@ -129,6 +139,8 @@ describe("runConfigWizard", () => {
             description: "Approximate number of employees",
           },
         },
+        includeSources: false,
+        sourcesField: "_sources",
       },
     });
 
@@ -179,6 +191,7 @@ describe("runConfigWizard", () => {
       "30",
       "1",
       "OLLAMA_API_KEY",
+      "",
       "Product {name}",
       "5",
       "de-de",
@@ -186,11 +199,13 @@ describe("runConfigWizard", () => {
       "3",
       "30",
       "1",
+      "n",
       "y",
       "short-description",
       "string",
       "Short description",
       "",
+      "n",
     );
 
     const result = await runConfigWizard({

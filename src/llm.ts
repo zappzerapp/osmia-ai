@@ -8,6 +8,7 @@ export interface LLMConfig {
   maxRetries?: number;
   requestsPerMinute?: number;
   maxConcurrency?: number;
+  structuredOutput?: boolean;
 }
 
 export class LLMError extends Error {
@@ -27,10 +28,9 @@ interface LLMMessage {
   role: "system" | "user" | "assistant";
   content: string;
 }
-
 interface LLMRequestPayload {
   model: string;
-  format: "json";
+  format: "json" | Record<string, unknown>;
   messages: LLMMessage[];
   stream: false;
 }
@@ -151,6 +151,69 @@ function parseJSONResponse(content: string): Record<string, unknown> {
   }
 }
 
+export type ExtractionSchemaField = {
+  type?: string;
+  description?: string | undefined;
+};
+
+export type ExtractionSchema = Record<string, ExtractionSchemaField>;
+
+/**
+ * Convert an osmia extraction schema into a JSON Schema object suitable for
+ * Ollama's structured outputs (`format` field). Every field is marked
+ * required and `additionalProperties` is forbidden so the model is fully
+ * constrained to the configured shape.
+ */
+export function buildJsonSchema(
+  extractionSchema: ExtractionSchema,
+): Record<string, unknown> {
+  const properties: Record<string, unknown> = {};
+  const required: string[] = [];
+
+  for (const [key, field] of Object.entries(extractionSchema)) {
+    required.push(key);
+    const fieldType = field?.type;
+    const property: Record<string, unknown> = {};
+
+    switch (fieldType) {
+      case "string":
+      case "number":
+      case "integer":
+      case "boolean":
+      case "null":
+        property.type = fieldType;
+        break;
+      case "array":
+        property.type = "array";
+        break;
+      case "object":
+        property.type = "object";
+        break;
+      case "unknown":
+      case "any":
+      case undefined:
+        // No constraint — accept any JSON value.
+        break;
+      default:
+        // Unknown osmia type: leave unconstrained rather than fail.
+        break;
+    }
+
+    if (field?.description) {
+      property.description = field.description;
+    }
+
+    properties[key] = property;
+  }
+
+  return {
+    type: "object",
+    properties,
+    required,
+    additionalProperties: false,
+  };
+}
+
 export class LLMClient {
   private readonly config: LLMConfig;
 
@@ -161,6 +224,7 @@ export class LLMClient {
   async extract(
     systemPrompt: string,
     userPrompt: string,
+    schemaJson?: Record<string, unknown>,
   ): Promise<Record<string, unknown>> {
     const maxRetries = this.config.maxRetries ?? 3;
 
@@ -170,7 +234,7 @@ export class LLMClient {
       attemptNumber += 1
     ) {
       try {
-        return await this.performExtract(systemPrompt, userPrompt);
+        return await this.performExtract(systemPrompt, userPrompt, schemaJson);
       } catch (error) {
         const llmError =
           error instanceof LLMError
@@ -202,10 +266,13 @@ export class LLMClient {
   private async performExtract(
     systemPrompt: string,
     userPrompt: string,
+    schemaJson?: Record<string, unknown>,
   ): Promise<Record<string, unknown>> {
+    const useStructuredOutput =
+      this.config.structuredOutput !== false && schemaJson !== undefined;
     const payload: LLMRequestPayload = {
       model: this.config.model,
-      format: "json",
+      format: useStructuredOutput ? schemaJson! : "json",
       messages: [
         { role: "system", content: systemPrompt },
         { role: "user", content: userPrompt },

@@ -53,6 +53,7 @@ function createDefaultConfig(): Config {
       requestsPerMinute: 30,
       maxConcurrency: 1,
       apiKeyEnv: "OLLAMA_API_KEY",
+      structuredOutput: true,
     },
     research: {
       searchQuery: "Product {name} {sku} specifications overview",
@@ -62,6 +63,12 @@ function createDefaultConfig(): Config {
       maxRetries: 3,
       requestsPerMinute: 30,
       maxConcurrency: 1,
+      fetchPageContent: false,
+      maxPageChars: 8000,
+      pageFetchTimeoutMs: 15000,
+      pageFetchMaxRetries: 2,
+      pageFetchRequestsPerMinute: 20,
+      pageFetchMaxConcurrency: 2,
     },
     extraction: {
       prompt: defaultExtractionPrompt,
@@ -75,6 +82,8 @@ function createDefaultConfig(): Config {
           description: "Most likely category",
         },
       },
+      includeSources: false,
+      sourcesField: "_sources",
     },
   });
 }
@@ -438,6 +447,12 @@ async function collectWizardAnswers({
     const apiKeyEnv = await promptText(rl, stdout, "API key env variable", {
       defaultValue: defaults.llm.apiKeyEnv,
     });
+    const structuredOutput = await promptConfirm(
+      rl,
+      stdout,
+      "Use structured outputs (constrain LLM to schema)",
+      defaults.llm.structuredOutput,
+    );
 
     writeLine(stdout);
     writeLine(stdout, picocolors.cyan("Research"));
@@ -486,6 +501,23 @@ async function collectWizardAnswers({
         value > 0 ? undefined : "Concurrency must be greater than 0.",
     );
 
+    const fetchPageContent = await promptConfirm(
+      rl,
+      stdout,
+      "Fetch full page content for each search result (slower, better extraction)",
+      defaults.research.fetchPageContent,
+    );
+    const maxPageChars = fetchPageContent
+      ? await promptNumber(
+          rl,
+          stdout,
+          "Max page chars per result",
+          defaults.research.maxPageChars,
+          (value) =>
+            value > 0 ? undefined : "Max page chars must be greater than 0.",
+        )
+      : defaults.research.maxPageChars;
+
     writeLine(stdout);
     writeLine(stdout, picocolors.cyan("Extraction"));
     const prompt = await promptMultiline(
@@ -495,6 +527,12 @@ async function collectWizardAnswers({
       defaults.extraction.prompt,
     );
     const schema = await promptSchema(rl, stdout);
+    const includeSources = await promptConfirm(
+      rl,
+      stdout,
+      "Attach source URLs to each record (_sources)",
+      defaults.extraction.includeSources,
+    );
 
     const config = validateConfig({
       llm: {
@@ -505,6 +543,7 @@ async function collectWizardAnswers({
         requestsPerMinute: llmRequestsPerMinute,
         maxConcurrency: llmConcurrency,
         apiKeyEnv,
+        structuredOutput,
       },
       research: {
         searchQuery,
@@ -514,10 +553,14 @@ async function collectWizardAnswers({
         maxRetries: searchRetries,
         requestsPerMinute: searchRequestsPerMinute,
         maxConcurrency: searchConcurrency,
+        fetchPageContent,
+        maxPageChars,
       },
       extraction: {
         prompt,
         schema,
+        includeSources,
+        sourcesField: defaults.extraction.sourcesField,
       },
     });
 
