@@ -174,6 +174,37 @@ be a JSON array (e.g. an `.json` path), osmia automatically switches to JSONL an
 `--resume` with stdout output (no `--output` file) is a no-op: there is no file to read from, so
 a warning is logged and every record is processed normally.
 
+## Library Usage
+
+Osmia ships as an ESM Node library too — the same modules the CLI uses are exported from the
+package root, so you can embed enrichment in a script or service:
+
+```ts
+import { loadConfig, runPipeline } from "osmia-ai";
+
+await runPipeline({
+  config: "config.yaml",
+  inputPath: "data.json",
+  outputPath: "enriched.json",
+  workers: 3,
+  skipFields: [],
+  dryRun: false,
+  verbose: 0,
+});
+```
+
+Notable exports (see [`src/index.ts`](src/index.ts) for the full surface):
+
+- **Pipeline**: `runPipeline`, `loadInputData`, `saveOutputData`, `shouldSkipRecord`, `detectJsonlFormat`
+- **Config**: `loadConfig`, `validateConfig`, `serializeConfig`, `configSchema`, `supportedExtractionFieldTypes`
+- **LLM**: `LLMClient`, `LLMError`
+- **Search**: `searchWeb`, `searchWithTemplate`, `formatQuery`
+- **Wizard**: `runConfigWizard`, `createDefaultConfig`
+- **Types**: `Config`, `LLMConfig`, `ResearchConfig`, `ExtractionConfig`, `PipelineOptions`, `PipelineRecord`, `SearchResult`
+
+The zod schemas (`configSchema`, `llmConfigSchema`, `researchConfigSchema`, `extractionConfigSchema`)
+let you validate or manipulate configs programmatically.
+
 ## Configuration
 
 **Templating**: Use `{fieldName}` placeholders in `searchQuery`—they're replaced from input records.
@@ -253,6 +284,34 @@ extraction:
   sourcesField: _sources
 ```
 
+### Extraction schema
+
+`extraction.schema` maps each output field to its type. Valid `type` values:
+`string`, `number`, `boolean`, `integer`, `array`, `object`, `null`, `unknown`, `any`.
+A field may also carry a `description`:
+
+```yaml
+extraction:
+  schema:
+    category:
+      type: "string"
+      description: "Most likely product category"
+    price:
+      type: "number"
+      description: "Price in EUR"
+```
+
+As a shorthand, a bare string is read as `{ type: <string> }`:
+
+```yaml
+extraction:
+  schema:
+    category: "string"
+    price: "number"
+```
+
+The schema is enforced with zod after the LLM responds, before the record is written.
+
 ## Use Cases
 
 - **E-commerce**: Enrich product catalogs with specs and descriptions
@@ -267,6 +326,8 @@ nvm use
 npm install
 npm run build
 npm test
+npm run dev -- --config config.yaml --input data.json   # run from source via tsx (no build needed)
+npm run lint                                            # typecheck without emitting
 ```
 
 Both `camelCase` and legacy `snake_case` config keys are accepted when loading YAML files.
